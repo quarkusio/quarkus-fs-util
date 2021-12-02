@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: [ 13 ]
+        java: [ 17.0.1+12, 11 ]
     steps:
       - uses: actions/checkout@v2
       - name: Get Date
