@@ -8,7 +8,7 @@
         <version>39</version>
     </parent>
 
-    <groupId>io.quarkus.fs</groupId>
+    <groupId>io.quarkus</groupId>
     <artifactId>quarkus-fs-util</artifactId>
     <version>0.0.2-SNAPSHOT</version>
     <packaging>jar</packaging>
@@ -140,20 +140,11 @@
                             <outputDirectory>${project.build.directory}/classes/META-INF/versions/13
                             </outputDirectory>
                             <additionalClasspathElements>
-                                <additionalClasspathElement>
-                                    ${project.build.directory}/classes/META-INF/versions/12
-                                </additionalClasspathElement>
-                                <additionalClasspathElement>
-                                    ${project.build.directory}/classes/META-INF/versions/11
-                                </additionalClasspathElement>
-                                <additionalClasspathElement>
-                                    ${project.build.directory}/classes/META-INF/versions/10
-                                </additionalClasspathElement>
-                                <additionalClasspathElement>
-                                    ${project.build.directory}/classes/META-INF/versions/9
-                                </additionalClasspathElement>
-                                <additionalClasspathElement>${project.build.outputDirectory}
-                                </additionalClasspathElement>
+                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/12</additionalClasspathElement>
+                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/11</additionalClasspathElement>
+                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/10</additionalClasspathElement>
+                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/9</additionalClasspathElement>
+                                <additionalClasspathElement>${project.build.outputDirectory}</additionalClasspathElement>
                             </additionalClasspathElements>
                         </configuration>
                     </execution>
