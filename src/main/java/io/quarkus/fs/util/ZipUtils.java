@@ -125,7 +125,7 @@ public class ZipUtils {
             Files.createDirectories(zipFile.getParent());
         }
         try {
-            return FileSystemHelper.openFS(toZipUri(zipFile), env, null);
+            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(toZipUri(zipFile), env);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + zipFile, e);
         } catch (IOException ioe) {
@@ -178,7 +178,7 @@ public class ZipUtils {
         // onto a fs that handles a reference counter and close the fs only when all thread are done
         // with it.
         try {
-            return FileSystemHelper.openFS(uri, env, null);
+            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(uri, env);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + uri, e);
         } catch (IOException | ZipError ioe) {
@@ -200,7 +200,7 @@ public class ZipUtils {
      */
     public static FileSystem newFileSystem(final Path path) throws IOException {
         try {
-            return FileSystemHelper.openFS(path, DEFAULT_OWNER_ENV, null);
+            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, DEFAULT_OWNER_ENV);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + path, e);
         } catch (IOException ioe) {
@@ -209,15 +209,19 @@ public class ZipUtils {
         }
     }
 
+    /**
+     * This call is thread safe, a new FS is created for each invocation.
+     *
+     * @param path The zip file.
+     * @return A new FileSystem instance
+     * @throws IOException in case of a failure
+     * @deprecated Use {@link #newFileSystem(Path)}. Providing a classLoader makes no difference, since the
+     *             ZipFileSystemProvider is part of the FileSystemProvider.installedProviders() list. No classloader needs to be
+     *             searched for a custom FileSystemProvider.
+     */
+    @Deprecated
     public static FileSystem newFileSystem(final Path path, ClassLoader classLoader) throws IOException {
-        try {
-            return FileSystemHelper.openFS(path, DEFAULT_OWNER_ENV, classLoader);
-        } catch (FileSystemAlreadyExistsException e) {
-            throw new IOException("fs already exists " + path, e);
-        } catch (IOException ioe) {
-            // include the path for which the filesystem creation failed
-            throw new IOException("Failed to create a new filesystem for " + path, ioe);
-        }
+        return newFileSystem(path);
     }
 
     /**
