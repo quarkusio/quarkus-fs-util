@@ -264,7 +264,8 @@ class ZipFileSystem extends FileSystem {
         // sm and existence check
         zfpath.getFileSystem().provider().checkAccess(zfpath, AccessMode.READ);
         @SuppressWarnings("removal")
-        boolean writeable = AccessController.doPrivileged(
+        // QUARKUS: make writeable check configurable using env
+        boolean writeable = isTrue(env, "writeable") && AccessController.doPrivileged(
                 (PrivilegedAction<Boolean>) () -> Files.isWritable(zfpath));
         this.readOnly = !writeable;
         this.zc = ZipCoder.get(nameEncoding);

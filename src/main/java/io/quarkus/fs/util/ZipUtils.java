@@ -38,6 +38,7 @@ public class ZipUtils {
 
         CREATE_ENV.putAll(DEFAULT_OWNER_ENV);
         CREATE_ENV.put("create", "true");
+        CREATE_ENV.put("writeable", "true");
     }
 
     public static void unzip(Path zipFile, Path targetDir) throws IOException {
