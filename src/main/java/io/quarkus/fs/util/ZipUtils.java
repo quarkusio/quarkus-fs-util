@@ -1,10 +1,14 @@
 
 package io.quarkus.fs.util;
 
+import io.quarkus.fs.util.sysfs.ConfigurableFileSystemProviderWrapper;
+import io.quarkus.fs.util.sysfs.FileSystemWrapper;
+import io.quarkus.fs.util.sysfs.PathWrapper;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.AccessMode;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystem;
@@ -16,9 +20,11 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.spi.FileSystemProvider;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipError;
 
 /**
@@ -169,6 +175,7 @@ public class ZipUtils {
      * @param env Env map.
      * @return A new FileSystem.
      * @throws IOException in case of a failure
+     * @deprecated Use {@link #newFileSystem(Path)} or {@link #newZip(Path)}.
      */
     public static FileSystem newFileSystem(URI uri, Map<String, Object> env) throws IOException {
         env = new HashMap<>(env);
@@ -198,8 +205,12 @@ public class ZipUtils {
      * @return A new FileSystem instance
      * @throws IOException in case of a failure
      */
-    public static FileSystem newFileSystem(final Path path) throws IOException {
+    public static FileSystem newFileSystem(Path path) throws IOException {
         try {
+            FileSystemProvider provider = new ConfigurableFileSystemProviderWrapper(path.getFileSystem().provider(),
+                    Set.of(AccessMode.WRITE));
+            FileSystem fileSystem = new FileSystemWrapper(path.getFileSystem(), provider);
+            path = new PathWrapper(path, fileSystem);
             return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, DEFAULT_OWNER_ENV);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + path, e);
