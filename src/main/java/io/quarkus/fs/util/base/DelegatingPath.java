@@ -21,8 +21,9 @@ import java.util.function.Consumer;
 public abstract class DelegatingPath implements Path {
     protected final Path delegate;
 
+    private volatile URI uri;
+
     /**
-     *
      * @param delegate the Path to delegate to. May not be null.
      */
     protected DelegatingPath(Path delegate) {
@@ -155,7 +156,10 @@ public abstract class DelegatingPath implements Path {
 
     @Override
     public URI toUri() {
-        return delegate.toUri();
+        if (uri == null) {
+            uri = delegate.toUri();
+        }
+        return uri;
     }
 
     @Override
