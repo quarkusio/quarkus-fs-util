@@ -18,13 +18,84 @@ on:
       - '*.adoc'
       - '*.txt'
 
+env:
+  LANG: en_US.UTF-8
+  MAVEN_ARGS: "-Dformat.skip"
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: JVM Tests - JDK ${{matrix.java.name}}
+    runs-on: ${{ matrix.java.os-name }}
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17.0.1+12, 11 ]
+        java:
+          - {
+            name: "11 Eclipse Temurin",
+            java-version: 11,
+            os-name: "ubuntu-latest",
+            java-vendor: "temurin",
+            maven_args: "-Dno-format"
+          }
+          - {
+            name: "17 Eclipse Temurin",
+            java-version: 17,
+            os-name: "ubuntu-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "11 Zulu OpenJDK",
+            java-version: 11,
+            os-name: "ubuntu-latest",
+            java-vendor: "zulu",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "17 Zulu OpenJDK",
+            java-version: 17,
+            os-name: "ubuntu-latest",
+            java-vendor: "zulu",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            # Oracle OpenJDK does not include every fix that gets backported.
+            # There is no way to directly test against Oracle OpenJDK
+            # Simply use 11.0.0 from Liberica, which does not contain any backports.
+            # Should help test against any rough vendors not including all fixes of later versions.
+            name: "11.0.0 Liberica JDK",
+            java-version: 11.0.0,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "11 Liberica JDK",
+            java-version: 11,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "17 Liberica JDK",
+            java-version: 17,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "11 Eclipse Temurin Windows",
+            java-version: 11,
+            os-name: "windows-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "17 Eclipse Temurin Windows",
+            java-version: 17,
+            os-name: "windows-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
     steps:
       - uses: actions/checkout@v2
       - name: Get Date
@@ -42,10 +113,10 @@ jobs:
       - name: Install JDK ${{ matrix.java }}
         uses: actions/setup-java@v2
         with:
-          distribution: temurin
-          java-version: ${{ matrix.java }}
+          distribution: ${{ matrix.java.java-vendor }}
+          java-version: ${{ matrix.java.java-version }}
       - name: Build with Maven
-        run: export LANG=en_US && mvn -B clean install -Dno-format
+        run: mvn -B clean install ${{ matrix.java.maven_args }}
       - name: Delete Local Artifacts From Cache
         shell: bash
         run: rm -rf ~/.m2/repository/io/quarkus/quarkus-fs-util*
