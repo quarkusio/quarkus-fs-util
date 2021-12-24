@@ -1,14 +1,10 @@
 
 package io.quarkus.fs.util;
 
-import io.quarkus.fs.util.sysfs.ConfigurableFileSystemProviderWrapper;
-import io.quarkus.fs.util.sysfs.FileSystemWrapper;
-import io.quarkus.fs.util.sysfs.PathWrapper;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.AccessMode;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystem;
@@ -24,7 +20,6 @@ import java.nio.file.spi.FileSystemProvider;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.zip.ZipError;
 
 /**
@@ -207,10 +202,7 @@ public class ZipUtils {
      */
     public static FileSystem newFileSystem(Path path) throws IOException {
         try {
-            FileSystemProvider provider = new ConfigurableFileSystemProviderWrapper(path.getFileSystem().provider(),
-                    Set.of(AccessMode.WRITE));
-            FileSystem fileSystem = new FileSystemWrapper(path.getFileSystem(), provider);
-            path = new PathWrapper(path, fileSystem);
+            path = FileSystemHelper.ignoreFileWriteability(path);
             return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, DEFAULT_OWNER_ENV);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + path, e);
