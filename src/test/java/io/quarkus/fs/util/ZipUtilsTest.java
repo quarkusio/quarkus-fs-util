@@ -102,7 +102,7 @@ class ZipUtilsTest {
     }
 
     private static void assertFileExistsWithContent(final Path path, final String content) throws IOException {
-        final String readContent = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        final String readContent = Files.readString(path);
         assertEquals(content, readContent, "Unexpected content in " + path);
     }
 }
