@@ -1,6 +1,7 @@
 
 package io.quarkus.fs.util;
 
+import io.quarkus.fs.util.cache.FileSystemCache;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
@@ -113,10 +114,8 @@ public class ZipUtils {
     }
 
     public static FileSystem newZip(Path zipFile) throws IOException {
-        final Map<String, Object> env;
-        if (Files.exists(zipFile)) {
-            env = DEFAULT_OWNER_ENV;
-        } else {
+        Map<String, Object> env = Collections.emptyMap();
+        if (!Files.exists(zipFile)) {
             env = CREATE_ENV;
             // explicitly create any parent dirs, since the ZipFileSystem only creates a new file
             // with "create" = "true", but doesn't create any parent dirs.
@@ -128,7 +127,7 @@ public class ZipUtils {
         try {
             return FileSystemProviders.ZIP_PROVIDER.newFileSystem(toZipUri(zipFile), env);
         } catch (IOException ioe) {
-            // include the URI for which the filesystem creation failed
+            // include the path for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + zipFile, ioe);
         }
     }
@@ -212,7 +211,7 @@ public class ZipUtils {
 
         try {
             path = FileSystemHelper.ignoreFileWriteability(path);
-            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, env);
+            return FileSystemCache.INSTANCE.getOrCreateFileSystem(FileSystemProviders.ZIP_PROVIDER, path, env);
         } catch (IOException ioe) {
             // include the path for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + path, ioe);
