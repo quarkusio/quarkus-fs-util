@@ -1,6 +1,5 @@
 package io.quarkus.fs.util.base;
 
-import io.quarkus.fs.util.sysfs.PathWrapper;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -39,8 +38,8 @@ public abstract class DelegatingPath implements Path {
      * @return unwrapped path, or the original one if not an instance of DelegatingPath
      */
     public static Path unwrap(Path path) {
-        if (path instanceof PathWrapper) {
-            return ((PathWrapper) path).getDelegate();
+        if (path instanceof DelegatingPath) {
+            return ((DelegatingPath) path).getDelegate();
         }
         return path;
     }
