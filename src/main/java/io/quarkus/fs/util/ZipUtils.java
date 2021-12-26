@@ -16,7 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.spi.FileSystemProvider;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -127,8 +127,6 @@ public class ZipUtils {
         }
         try {
             return FileSystemProviders.ZIP_PROVIDER.newFileSystem(toZipUri(zipFile), env);
-        } catch (FileSystemAlreadyExistsException e) {
-            throw new IOException("fs already exists " + zipFile, e);
         } catch (IOException ioe) {
             // include the URI for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + zipFile, ioe);
@@ -164,13 +162,12 @@ public class ZipUtils {
 
     /**
      * This call is not thread safe, a single of FileSystem can be created for the
-     * profided uri until it is closed.
+     * provided uri until it is closed.
      *
      * @param uri The uri to the zip file.
      * @param env Env map.
      * @return A new FileSystem.
      * @throws IOException in case of a failure
-     * @deprecated Use {@link #newFileSystem(Path)} or {@link #newZip(Path)}.
      */
     public static FileSystem newFileSystem(URI uri, Map<String, Object> env) throws IOException {
         env = new HashMap<>(env);
@@ -183,29 +180,39 @@ public class ZipUtils {
             return FileSystemProviders.ZIP_PROVIDER.newFileSystem(uri, env);
         } catch (FileSystemAlreadyExistsException e) {
             throw new IOException("fs already exists " + uri, e);
-        } catch (IOException | ZipError ioe) {
-            // TODO: (at a later date) Get rid of the ZipError catching (and instead only catch IOException)
-            //  since it's a JDK bug which threw the undeclared ZipError instead of an IOException.
-            //  Java 9 fixes it https://bugs.openjdk.java.net/browse/JDK-8062754
-
+        } catch (IOException ioe) {
             // include the URI for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + uri, ioe);
         }
     }
 
     /**
-     * This call is thread safe, a new FS is created for each invocation.
+     * Constructs a new FileSystem to access the contents of a zip as a file system.
      *
      * @param path The zip file.
      * @return A new FileSystem instance
      * @throws IOException in case of a failure
      */
     public static FileSystem newFileSystem(Path path) throws IOException {
+        return newFileSystem(path, Collections.emptyMap());
+    }
+
+    /**
+     * Constructs a new FileSystem to access the contents of a zip as a file system.
+     *
+     * @param path The zip file.
+     * @param env Property map to configure the constructed FileSystem.
+     * @return A new FileSystem instance
+     * @throws IOException in case of a failure
+     */
+    private static FileSystem newFileSystem(Path path, Map<String, Object> env) throws IOException {
+        final Map<String, Object> tmp = new HashMap<>(DEFAULT_OWNER_ENV);
+        tmp.putAll(env);
+        env = tmp;
+
         try {
             path = FileSystemHelper.ignoreFileWriteability(path);
-            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, DEFAULT_OWNER_ENV);
-        } catch (FileSystemAlreadyExistsException e) {
-            throw new IOException("fs already exists " + path, e);
+            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(path, env);
         } catch (IOException ioe) {
             // include the path for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + path, ioe);
@@ -216,6 +223,7 @@ public class ZipUtils {
      * This call is thread safe, a new FS is created for each invocation.
      *
      * @param path The zip file.
+     * @param classLoader the classloader to locate the appropriate FileSystemProvider to open the path
      * @return A new FileSystem instance
      * @throws IOException in case of a failure
      * @deprecated Use {@link #newFileSystem(Path)}. Providing a classLoader makes no difference, since the
@@ -224,7 +232,7 @@ public class ZipUtils {
      */
     @Deprecated
     public static FileSystem newFileSystem(final Path path, ClassLoader classLoader) throws IOException {
-        return newFileSystem(path);
+        return newFileSystem(path, Collections.emptyMap());
     }
 
     /**
