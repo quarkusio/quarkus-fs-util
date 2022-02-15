@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystem;
@@ -65,7 +66,7 @@ public class ZipUtils {
     public static URI toZipUri(Path zipFile) throws IOException {
         URI zipUri = zipFile.toUri();
         try {
-            zipUri = new URI(JAR_URI_PREFIX + zipUri.getScheme(), zipUri.getPath(), null);
+            zipUri = new URL(JAR_URI_PREFIX + zipUri.getScheme() + "://" + zipUri.getRawPath() + "!/").toURI();
         } catch (URISyntaxException e) {
             throw new IOException("Failed to create a JAR URI for " + zipFile, e);
         }

@@ -12,6 +12,8 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class ZipUtilsTest {
 
@@ -60,6 +62,32 @@ class ZipUtilsTest {
     public void testNewZip() throws Exception {
         final Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
         final Path zipPath = Paths.get(tmpDir.toString(), "ziputilstest-" + System.currentTimeMillis() + ".jar");
+        try {
+            try (final FileSystem fs = ZipUtils.newZip(zipPath)) {
+                final Path someFileInZip = fs.getPath("hello.txt");
+                Files.write(someFileInZip, "hello".getBytes(StandardCharsets.UTF_8));
+            }
+            // now just verify that the content was actually written out
+            try (final FileSystem fs = ZipUtils.newFileSystem(zipPath)) {
+                assertFileExistsWithContent(fs.getPath("hello.txt"), "hello");
+            }
+        } finally {
+            Files.deleteIfExists(zipPath);
+        }
+    }
+
+    /**
+     * Test that the {@link ZipUtils#newZip(Path)} works as expected when the path contains a question mark
+     *
+     * Windows does not support question marks in file names
+     *
+     * @throws Exception
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    public void testNewZipWithQuestionMark() throws Exception {
+        final Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
+        final Path zipPath = Paths.get(tmpDir.toString(), "ziputils?test-" + System.currentTimeMillis() + ".jar");
         try {
             try (final FileSystem fs = ZipUtils.newZip(zipPath)) {
                 final Path someFileInZip = fs.getPath("hello.txt");
