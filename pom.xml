@@ -10,7 +10,7 @@
 
     <groupId>io.quarkus</groupId>
     <artifactId>quarkus-fs-util</artifactId>
-    <version>0.0.9-SNAPSHOT</version>
+    <version>0.0.9</version>
     <packaging>jar</packaging>
     <name>Quarkus - FS Util</name>
 
@@ -37,7 +37,7 @@
         <url>https://github.com/quarkusio/quarkus-fs-util</url>
         <connection>scm:git:git@github.com:quarkusio/quarkus-fs-util.git</connection>
         <developerConnection>scm:git:git@github.com:quarkusio/quarkus-fs-util.git</developerConnection>
-        <tag>HEAD</tag>
+        <tag>quarkus-fs-util-0.0.9</tag>
     </scm>
 
     <issueManagement>
