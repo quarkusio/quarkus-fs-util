@@ -114,11 +114,19 @@ public class ZipUtils {
     }
 
     public static FileSystem newZip(Path zipFile) throws IOException {
-        final Map<String, Object> env;
+        return newZip(zipFile, Collections.emptyMap());
+    }
+
+    /**
+     * In this version, callers can set whatever parameters they like for the FileSystem.
+     * Note that these values always take precedence over whatever the library itself sets.
+     */
+    public static FileSystem newZip(Path zipFile, Map<String, Object> env) throws IOException {
+        Map<String, Object> effectiveEnv;
         if (Files.exists(zipFile)) {
-            env = DEFAULT_OWNER_ENV;
+            effectiveEnv = DEFAULT_OWNER_ENV;
         } else {
-            env = CREATE_ENV;
+            effectiveEnv = CREATE_ENV;
             // explicitly create any parent dirs, since the ZipFileSystem only creates a new file
             // with "create" = "true", but doesn't create any parent dirs.
 
@@ -126,8 +134,12 @@ public class ZipUtils {
             // as per its contract doesn't throw any exception if the parent dir(s) already exist
             Files.createDirectories(zipFile.getParent());
         }
+        if (env != null) {
+            effectiveEnv = new HashMap<>(effectiveEnv); // we need to copy in order avoid polluting the static values
+            effectiveEnv.putAll(env);
+        }
         try {
-            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(toZipUri(zipFile), env);
+            return FileSystemProviders.ZIP_PROVIDER.newFileSystem(toZipUri(zipFile), effectiveEnv);
         } catch (IOException ioe) {
             // include the URI for which the filesystem creation failed
             throw new IOException("Failed to create a new filesystem for " + zipFile, ioe);
