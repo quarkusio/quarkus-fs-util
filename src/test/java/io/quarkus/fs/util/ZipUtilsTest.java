@@ -1,6 +1,7 @@
 package io.quarkus.fs.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.net.URI;
@@ -10,9 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.EnabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 import org.junit.jupiter.api.condition.OS;
 
 class ZipUtilsTest {
@@ -74,6 +78,49 @@ class ZipUtilsTest {
         } finally {
             Files.deleteIfExists(zipPath);
         }
+    }
+
+    /**
+     * Test that the {@link ZipUtils#newZip(Path, Map)} works as expected
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testNewNonCompressedZip() throws Exception {
+        final Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
+        final Path zipPath = Paths.get(tmpDir.toString(), "ziputilstest-" + System.currentTimeMillis() + ".jar");
+        try {
+            try (final FileSystem fs = ZipUtils.newZip(zipPath, Map.of("compressionMethod", "STORED"))) {
+                final Path someFileInZip = fs.getPath("hello.txt");
+                Files.write(someFileInZip, "hello".getBytes(StandardCharsets.UTF_8));
+            }
+            // now just verify that the content was actually written out
+            try (final FileSystem fs = ZipUtils.newFileSystem(zipPath)) {
+                Path helloFilePath = fs.getPath("hello.txt");
+                assertFileExistsWithContent(helloFilePath, "hello");
+            }
+
+        } finally {
+            Files.deleteIfExists(zipPath);
+        }
+    }
+
+    // on Java 11, passing an invalid value does not make the method fail
+    @EnabledForJreRange(min = JRE.JAVA_17)
+    @Test
+    public void tesIllegalEnv() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            final Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
+            final Path zipPath = Paths.get(tmpDir.toString(), "ziputilstest-" + System.currentTimeMillis() + ".jar");
+            try {
+                try (final FileSystem fs = ZipUtils.newZip(zipPath, Map.of("compressionMethod", "DUMMY"))) {
+                    final Path someFileInZip = fs.getPath("hello.txt");
+                    Files.write(someFileInZip, "hello".getBytes(StandardCharsets.UTF_8));
+                }
+            } finally {
+                Files.deleteIfExists(zipPath);
+            }
+        });
     }
 
     /**
