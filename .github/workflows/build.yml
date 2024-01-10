@@ -30,13 +30,6 @@ jobs:
       matrix:
         java:
           - {
-            name: "11 Eclipse Temurin",
-            java-version: 11,
-            os-name: "ubuntu-latest",
-            java-vendor: "temurin",
-            maven_args: "-Dno-format"
-          }
-          - {
             name: "17 Eclipse Temurin",
             java-version: 17,
             os-name: "ubuntu-latest",
@@ -44,10 +37,10 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
-            name: "11 Zulu OpenJDK",
-            java-version: 11,
+            name: "21 Eclipse Temurin",
+            java-version: 21,
             os-name: "ubuntu-latest",
-            java-vendor: "zulu",
+            java-vendor: "temurin",
             maven_args: "$MAVEN_ARGS"
           }
           - {
@@ -58,21 +51,10 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
-            # Oracle OpenJDK does not include every fix that gets backported.
-            # There is no way to directly test against Oracle OpenJDK
-            # Simply use 11.0.0 from Liberica, which does not contain any backports.
-            # Should help test against any rough vendors not including all fixes of later versions.
-            name: "11.0.0 Liberica JDK",
-            java-version: 11.0.0,
+            name: "21 Zulu OpenJDK",
+            java-version: 21,
             os-name: "ubuntu-latest",
-            java-vendor: "liberica",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "11 Liberica JDK",
-            java-version: 11,
-            os-name: "ubuntu-latest",
-            java-vendor: "liberica",
+            java-vendor: "zulu",
             maven_args: "$MAVEN_ARGS"
           }
           - {
@@ -83,15 +65,22 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
-            name: "11 Eclipse Temurin Windows",
-            java-version: 11,
-            os-name: "windows-latest",
-            java-vendor: "temurin",
+            name: "21 Liberica JDK",
+            java-version: 21,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
             maven_args: "$MAVEN_ARGS"
           }
           - {
             name: "17 Eclipse Temurin Windows",
             java-version: 17,
+            os-name: "windows-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "21 Eclipse Temurin Windows",
+            java-version: 21,
             os-name: "windows-latest",
             java-vendor: "temurin",
             maven_args: "$MAVEN_ARGS"
