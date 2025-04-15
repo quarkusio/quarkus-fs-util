@@ -10,6 +10,7 @@ on:
       - '*.md'
       - '*.adoc'
       - '*.txt'
+      - '.github/project.yml'
   pull_request:
     paths-ignore:
       - '.gitignore'
@@ -86,7 +87,7 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Get Date
         id: get-date
         run: |
@@ -94,13 +95,13 @@ jobs:
         shell: bash
       - name: Cache Maven Repository
         id: cache-maven
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           # refresh cache every month to avoid unlimited growth
           key: maven-repo-jdk-${{ matrix.java }}-${{ steps.get-date.outputs.date }}
       - name: Install JDK ${{ matrix.java }}
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
           distribution: ${{ matrix.java.java-vendor }}
           java-version: ${{ matrix.java.java-version }}
