@@ -66,7 +66,8 @@ public class ZipUtils {
     public static URI toZipUri(Path zipFile) throws IOException {
         URI zipUri = zipFile.toUri();
         try {
-            zipUri = new URL(JAR_URI_PREFIX + zipUri.getScheme() + "://" + zipUri.getRawPath() + "!/").toURI();
+            zipUri = new URL(JAR_URI_PREFIX + zipUri.getScheme() + "://" +
+                    zipUri.getRawPath().replace("!/", "%21/") + "!/").toURI();
         } catch (URISyntaxException e) {
             throw new IOException("Failed to create a JAR URI for " + zipFile, e);
         }
