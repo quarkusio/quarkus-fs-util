@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.jboss</groupId>
         <artifactId>jboss-parent</artifactId>
-        <version>39</version>
+        <version>46</version>
     </parent>
 
     <groupId>io.quarkus</groupId>
@@ -47,18 +47,18 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.target>11</maven.compiler.target>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.release>11</maven.compiler.release>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.release>17</maven.compiler.release>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <junit.jupiter.version>5.8.1</junit.jupiter.version>
-        <quarkus.version>3.6.5</quarkus.version>
+        <junit.jupiter.version>5.11.1</junit.jupiter.version>
+        <quarkus.version>3.15.1</quarkus.version>
 
-        <formatter-maven-plugin.version>2.17.0</formatter-maven-plugin.version>
-        <impsort-maven-plugin.version>1.9.0</impsort-maven-plugin.version>
-        <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
-        <nexus-staging-maven-plugin.version>1.6.8</nexus-staging-maven-plugin.version>
+        <formatter-maven-plugin.version>2.24.1</formatter-maven-plugin.version>
+        <impsort-maven-plugin.version>1.12.0</impsort-maven-plugin.version>
+        <surefire-plugin.version>3.5.0</surefire-plugin.version>
+        <nexus-staging-maven-plugin.version>1.6.14</nexus-staging-maven-plugin.version>
     </properties>
 
     <distributionManagement>
@@ -129,26 +129,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <!-- Can be removed once https://github.com/jboss/jboss-parent-pom/pull/108 is included in a release -->
-                        <id>compile-java13</id>
-                        <configuration combine.self="override">
-                            <release>13</release>
-                            <buildDirectory>${project.build.directory}</buildDirectory>
-                            <compileSourceRoots>${project.basedir}/src/main/java13</compileSourceRoots>
-                            <outputDirectory>${project.build.directory}/classes/META-INF/versions/13
-                            </outputDirectory>
-                            <additionalClasspathElements>
-                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/12</additionalClasspathElement>
-                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/11</additionalClasspathElement>
-                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/10</additionalClasspathElement>
-                                <additionalClasspathElement>${project.build.directory}/classes/META-INF/versions/9</additionalClasspathElement>
-                                <additionalClasspathElement>${project.build.outputDirectory}</additionalClasspathElement>
-                            </additionalClasspathElements>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>
