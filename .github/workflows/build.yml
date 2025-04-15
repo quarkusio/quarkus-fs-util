@@ -10,6 +10,7 @@ on:
       - '*.md'
       - '*.adoc'
       - '*.txt'
+      - '.github/project.yml'
   pull_request:
     paths-ignore:
       - '.gitignore'
