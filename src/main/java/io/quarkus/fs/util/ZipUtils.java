@@ -8,19 +8,29 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileStore;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemAlreadyExistsException;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.WatchService;
+import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.UserPrincipalLookupService;
+import java.nio.file.spi.FileSystemProvider;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 import java.util.zip.ZipError;
 
 /**
@@ -263,5 +273,188 @@ public class ZipUtils {
     @Deprecated(forRemoval = true, since = "0.11.0")
     public static OutputStream wrapForJDK8232879(final OutputStream original) {
         return original;
+    }
+
+    /**
+     * Create a new ZIP file, ensuring reproducibility by sorting the files before adding them and enforcing the timestamps.
+     */
+    public static void zipReproducibly(Path src, Path zipFile, Instant entryTime) throws IOException {
+        try (FileSystem zipfs = createNewReproducibleZipFileSystem(zipFile, entryTime)) {
+            if (Files.isDirectory(src)) {
+                try (Stream<Path> stream = Files.walk(src)) {
+                    stream.sorted() // sort the input paths to get a reproducible output
+                            .forEach(srcPath -> {
+                                final Path targetPath = zipfs.getPath(src.relativize(srcPath).toString());
+                                try {
+                                    if (Files.isDirectory(srcPath)) {
+                                        try {
+                                            Files.copy(srcPath, targetPath);
+                                        } catch (FileAlreadyExistsException e) {
+                                            if (!Files.isDirectory(targetPath)) {
+                                                throw e;
+                                            }
+                                        }
+                                    } else {
+                                        Files.copy(srcPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                                    }
+                                } catch (IOException e) {
+                                    throw new RuntimeException(
+                                            String.format("Could not copy from %s into ZIP file %s", srcPath, zipFile));
+                                }
+                            });
+                }
+            } else {
+                Files.copy(src, zipfs.getPath(src.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    /**
+     * Create a new ZIP FileSystem, ensuring reproducibility by sorting the files before adding them and enforcing the
+     * timestamps.
+     */
+    public static FileSystem createNewReproducibleZipFileSystem(Path zipFile, Instant entryTime) throws IOException {
+        return createNewReproducibleZipFileSystem(zipFile, Collections.emptyMap(), entryTime);
+    }
+
+    /**
+     * Create a new ZIP FileSystem, ensuring reproducibility by sorting the files before adding them and enforcing the
+     * timestamps.
+     */
+    public static FileSystem createNewReproducibleZipFileSystem(Path zipFile, Map<String, Object> env, Instant entryTime)
+            throws IOException {
+        if (Files.exists(zipFile)) {
+            throw new IllegalArgumentException("Zip file " + zipFile + " already exists");
+        }
+
+        // explicitly create any parent dirs, since the ZipFileSystem only creates a new file
+        // with "create" = "true", but doesn't create any parent dirs.
+        // It's OK to not check the existence of the parent dir(s) first, since the API,
+        // as per its contract doesn't throw any exception if the parent dir(s) already exist
+        Files.createDirectories(zipFile.getParent());
+
+        Map<String, Object> effectiveEnv = CREATE_ENV;
+        if (env != null) {
+            effectiveEnv = new HashMap<>(effectiveEnv); // we need to copy in order avoid polluting the static values
+            effectiveEnv.putAll(env);
+        }
+        try {
+            return new ReproducibleZipFileSystem(newFileSystem(toZipUri(zipFile), effectiveEnv), entryTime);
+        } catch (IOException ioe) {
+            // include the URI for which the filesystem creation failed
+            throw new IOException("Failed to create a new filesystem for " + zipFile, ioe);
+        }
+    }
+
+    /**
+     * A wrapper delegating to another {@link FileSystem} instance that enforces {@link #entryTime} for every entry upon
+     * {@link #close()}.
+     */
+    private static class ReproducibleZipFileSystem extends FileSystem {
+        private final FileSystem delegate;
+        private final FileTime entryTime;
+
+        public ReproducibleZipFileSystem(FileSystem delegate, Instant entryTime) {
+            this.delegate = delegate;
+            this.entryTime = entryTime != null ? FileTime.fromMillis(entryTime.toEpochMilli()) : null;
+        }
+
+        @Override
+        public int hashCode() {
+            return delegate.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return delegate.equals(obj);
+        }
+
+        @Override
+        public FileSystemProvider provider() {
+            return delegate.provider();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (entryTime == null) {
+                delegate.close();
+                return;
+            }
+
+            try {
+                for (Path dir : delegate.getRootDirectories()) {
+                    try (Stream<Path> stream = Files.walk(dir)) {
+                        stream
+                                .filter(path -> !"/".equals(path.toString())) // nothing to do for the root path
+                                .forEach(path -> {
+                                    try {
+                                        Files.getFileAttributeView(path, BasicFileAttributeView.class)
+                                                .setTimes(entryTime, entryTime, entryTime);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(String.format("Could not set time attributes on %s", path),
+                                                e);
+                                    }
+                                });
+                    }
+                }
+            } finally {
+                delegate.close();
+            }
+        }
+
+        @Override
+        public boolean isOpen() {
+            return delegate.isOpen();
+        }
+
+        @Override
+        public boolean isReadOnly() {
+            return delegate.isReadOnly();
+        }
+
+        @Override
+        public String getSeparator() {
+            return delegate.getSeparator();
+        }
+
+        @Override
+        public Iterable<Path> getRootDirectories() {
+            return delegate.getRootDirectories();
+        }
+
+        @Override
+        public Iterable<FileStore> getFileStores() {
+            return delegate.getFileStores();
+        }
+
+        @Override
+        public String toString() {
+            return delegate.toString();
+        }
+
+        @Override
+        public Set<String> supportedFileAttributeViews() {
+            return delegate.supportedFileAttributeViews();
+        }
+
+        @Override
+        public Path getPath(String first, String... more) {
+            return delegate.getPath(first, more);
+        }
+
+        @Override
+        public PathMatcher getPathMatcher(String syntaxAndPattern) {
+            return delegate.getPathMatcher(syntaxAndPattern);
+        }
+
+        @Override
+        public UserPrincipalLookupService getUserPrincipalLookupService() {
+            return delegate.getUserPrincipalLookupService();
+        }
+
+        @Override
+        public WatchService newWatchService() throws IOException {
+            return delegate.newWatchService();
+        }
     }
 }
