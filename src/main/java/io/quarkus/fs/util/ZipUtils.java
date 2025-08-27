@@ -318,8 +318,7 @@ public class ZipUtils {
     }
 
     /**
-     * Create a new ZIP FileSystem, ensuring reproducibility by sorting the files before adding them and enforcing the
-     * timestamps.
+     * Create a new ZIP FileSystem, ensuring better reproducibility by enforcing entry timestamps for every entry.
      */
     public static FileSystem createNewReproducibleZipFileSystem(Path zipFile, Map<String, Object> env, Instant entryTime)
             throws IOException {
