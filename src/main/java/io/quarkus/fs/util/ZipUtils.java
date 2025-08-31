@@ -22,6 +22,8 @@ import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipalLookupService;
 import java.nio.file.spi.FileSystemProvider;
 import java.time.Instant;
@@ -333,6 +335,10 @@ public class ZipUtils {
         Files.createDirectories(zipFile.getParent());
 
         Map<String, Object> effectiveEnv = CREATE_ENV;
+
+        // to be able to set POSIX file permissions via Files.setPosixFilePermissions()
+        effectiveEnv.put("enablePosixFileAttributes", "true");
+
         if (env != null) {
             effectiveEnv = new HashMap<>(effectiveEnv); // we need to copy in order avoid polluting the static values
             effectiveEnv.putAll(env);
@@ -350,6 +356,9 @@ public class ZipUtils {
      * {@link #close()}.
      */
     private static class ReproducibleZipFileSystem extends FileSystem {
+        private static final Set<PosixFilePermission> DIR_UNIX_MODE = PosixFilePermissions.fromString("rwxr-xr-x"); // 0755
+        private static final Set<PosixFilePermission> FILE_UNIX_MODE = PosixFilePermissions.fromString("rw-r--r--"); // 0644
+
         private final FileSystem delegate;
         private final FileTime entryTime;
 
@@ -391,6 +400,17 @@ public class ZipUtils {
                                                 .setTimes(entryTime, entryTime, entryTime);
                                     } catch (IOException e) {
                                         throw new RuntimeException(String.format("Could not set time attributes on %s", path),
+                                                e);
+                                    }
+
+                                    try {
+                                        if (Files.isDirectory(path)) {
+                                            Files.setPosixFilePermissions(path, DIR_UNIX_MODE);
+                                        } else {
+                                            Files.setPosixFilePermissions(path, FILE_UNIX_MODE);
+                                        }
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(String.format("Could not set file permission on %s", path),
                                                 e);
                                     }
                                 });
