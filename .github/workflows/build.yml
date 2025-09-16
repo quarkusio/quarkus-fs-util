@@ -86,6 +86,20 @@ jobs:
             java-vendor: "temurin",
             maven_args: "$MAVEN_ARGS"
           }
+          - {
+            name: "17 Eclipse Temurin macOS",
+            java-version: 17,
+            os-name: "macos-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "21 Eclipse Temurin macOs",
+            java-version: 21,
+            os-name: "macos-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
     steps:
       - uses: actions/checkout@v4
       - name: Get Date
