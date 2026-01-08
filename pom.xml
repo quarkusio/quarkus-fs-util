@@ -58,6 +58,10 @@
         <formatter-maven-plugin.version>2.29.0</formatter-maven-plugin.version>
         <impsort-maven-plugin.version>1.12.0</impsort-maven-plugin.version>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
+
+        <!-- maven-release-plugin -->
+        <releaseProfiles>release</releaseProfiles>
+        <signTag>false</signTag><!-- we don't sign tags as we don't want GPG secrets available in repository -->
     </properties>
 
     <dependencies>
