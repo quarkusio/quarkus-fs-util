@@ -1,6 +1,7 @@
 
 package io.quarkus.fs.util;
 
+import io.quarkus.fs.util.rozip.ReadOnlyZipFileSystem;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
@@ -259,6 +260,27 @@ public class ZipUtils {
     @Deprecated
     public static FileSystem newFileSystem(final Path path, ClassLoader classLoader) throws IOException {
         return newFileSystem(path, Collections.emptyMap());
+    }
+
+    /**
+     * Opens a read-only, non-interruptible {@link FileSystem} for the given ZIP/JAR file.
+     * <p>
+     * Unlike {@link #newFileSystem(Path)}, this implementation uses
+     * {@link java.io.RandomAccessFile} instead of {@link java.nio.channels.FileChannel},
+     * making it immune to thread-interrupt-induced channel closures
+     * (<a href="https://bugs.openjdk.org/browse/JDK-8316882">JDK-8316882</a>).
+     * <p>
+     * Entry data is fully materialized in memory on each read (both the
+     * compressed and uncompressed bytes). Individual entries are capped at
+     * 256 MB uncompressed. Callers reading many entries concurrently against
+     * the same filesystem should be aware of the resulting heap usage.
+     *
+     * @param path the ZIP or JAR file
+     * @return a read-only {@link FileSystem} instance
+     * @throws IOException if the file cannot be read or is not a valid ZIP archive
+     */
+    public static FileSystem openReadOnly(Path path) throws IOException {
+        return ReadOnlyZipFileSystem.open(path);
     }
 
     /**
