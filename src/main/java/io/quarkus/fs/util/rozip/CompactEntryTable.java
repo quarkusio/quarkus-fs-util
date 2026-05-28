@@ -757,8 +757,7 @@ final class CompactEntryTable {
      * {@code int} values.
      */
     private static void mergeSort(int[] arr, int len, IntComparator cmp) {
-        int[] tmp = new int[len];
-        int[] src = arr, dst = tmp;
+        int[] src = arr, dst = new int[len];
         for (int width = 1; width < len; width *= 2) {
             for (int lo = 0; lo < len; lo += width * 2) {
                 int mid = Math.min(lo + width, len);
