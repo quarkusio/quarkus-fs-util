@@ -1004,7 +1004,7 @@ class ReadOnlyZipFileSystemTest {
         // Find compressed data length from the DD itself (at DD offset + 8)
         int ddOffset = -1;
         for (int i = localHeaderEnd; i < raw.length - 16; i++) {
-            if (readLeInt32(raw, i) == 0x08074b50) {
+            if (LittleEndian.readInt32(raw, i) == DATA_DESCRIPTOR_SIG) {
                 ddOffset = i;
                 break;
             }
@@ -1599,12 +1599,17 @@ class ReadOnlyZipFileSystemTest {
         return zip;
     }
 
+    private static final int LOCAL_HEADER_SIG = 0x04034b50;
+    private static final int DATA_DESCRIPTOR_SIG = 0x08074b50;
     private static final int CENTRAL_DIR_SIG = 0x02014b50;
+    private static final int EOCD_SIG = 0x06054b50;
+    private static final int ZIP64_EOCD_SIG = 0x06064b50;
+    private static final int ZIP64_EOCD_LOCATOR_SIG = 0x07064b50;
 
     private static int findCentralDirectoryOffset(byte[] zip) {
         for (int i = zip.length - 22; i >= 0; i--) {
-            if (readLeInt32(zip, i) == 0x06054b50) {
-                return (int) readLeUint32(zip, i + 16);
+            if (LittleEndian.readInt32(zip, i) == EOCD_SIG) {
+                return (int) LittleEndian.readUint32(zip, i + 16);
             }
         }
         throw new IllegalStateException("EOCD not found");
@@ -1612,22 +1617,22 @@ class ReadOnlyZipFileSystemTest {
 
     private static void patchCentralDirectoryUncompressedSize(byte[] zip, long newSize) {
         int cdOff = findCentralDirectoryOffset(zip);
-        if (readLeInt32(zip, cdOff) != CENTRAL_DIR_SIG) {
+        if (LittleEndian.readInt32(zip, cdOff) != CENTRAL_DIR_SIG) {
             throw new IllegalStateException("Not a central directory entry at offset " + cdOff);
         }
         writeLeUint32(zip, cdOff + 24, newSize);
     }
 
     private static void clearLocalHeaderDataDescriptorFlag(byte[] zip) {
-        if (readLeInt32(zip, 0) != 0x04034b50) {
+        if (LittleEndian.readInt32(zip, 0) != LOCAL_HEADER_SIG) {
             throw new IllegalStateException("Not a local file header at offset 0");
         }
         // Clear bit 3 of the general-purpose flags at local header offset 6
-        zip[6] = (byte) (zip[6] & ~0x08);
+        zip[6] = (byte) (zip[6] & 0b11110111);
     }
 
     private static void patchLocalHeaderUncompressedSize(byte[] zip, long newSize) {
-        if (readLeInt32(zip, 0) != 0x04034b50) {
+        if (LittleEndian.readInt32(zip, 0) != LOCAL_HEADER_SIG) {
             throw new IllegalStateException("Not a local file header at offset 0");
         }
         writeLeUint32(zip, 22, newSize);
@@ -1635,18 +1640,7 @@ class ReadOnlyZipFileSystemTest {
 
     private static long findCentralDirectoryCompressedSize(byte[] zip) {
         int cdOff = findCentralDirectoryOffset(zip);
-        return readLeUint32(zip, cdOff + 20);
-    }
-
-    private static int readLeInt32(byte[] buf, int off) {
-        return (buf[off] & 0xFF)
-                | ((buf[off + 1] & 0xFF) << 8)
-                | ((buf[off + 2] & 0xFF) << 16)
-                | ((buf[off + 3] & 0xFF) << 24);
-    }
-
-    private static long readLeUint32(byte[] buf, int off) {
-        return readLeInt32(buf, off) & 0xFFFFFFFFL;
+        return LittleEndian.readUint32(zip, cdOff + 20);
     }
 
     private static void writeLeUint32(byte[] buf, int off, long value) {
@@ -1676,7 +1670,7 @@ class ReadOnlyZipFileSystemTest {
 
         ByteBuffer local = ByteBuffer.allocate(30 + nameBytes.length + localExtra.length)
                 .order(ByteOrder.LITTLE_ENDIAN);
-        local.putInt(0x04034b50); // local file header signature
+        local.putInt(LOCAL_HEADER_SIG);
         local.putShort((short) 45); // version needed (4.5 for ZIP64)
         local.putShort((short) 0); // general purpose bit flag
         local.putShort((short) 0); // compression method: STORED
@@ -1725,7 +1719,7 @@ class ReadOnlyZipFileSystemTest {
         // -- ZIP64 End of Central Directory record --
         long zip64EocdOffset = out.size();
         ByteBuffer zip64Eocd = ByteBuffer.allocate(56).order(ByteOrder.LITTLE_ENDIAN);
-        zip64Eocd.putInt(0x06064b50); // ZIP64 EOCD signature
+        zip64Eocd.putInt(ZIP64_EOCD_SIG);
         zip64Eocd.putLong(44); // size of remaining record
         zip64Eocd.putShort((short) 45); // version made by
         zip64Eocd.putShort((short) 45); // version needed
@@ -1739,7 +1733,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- ZIP64 End of Central Directory locator --
         ByteBuffer locator = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN);
-        locator.putInt(0x07064b50); // ZIP64 EOCD locator signature
+        locator.putInt(ZIP64_EOCD_LOCATOR_SIG);
         locator.putInt(0); // disk with ZIP64 EOCD
         locator.putLong(zip64EocdOffset);
         locator.putInt(1); // total number of disks
@@ -1747,7 +1741,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- End of Central Directory record --
         ByteBuffer eocd = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN);
-        eocd.putInt(0x06054b50); // EOCD signature
+        eocd.putInt(EOCD_SIG);
         eocd.putShort((short) 0); // this disk number
         eocd.putShort((short) 0); // disk with CD start
         eocd.putShort((short) 0xFFFF); // entries on this disk (ZIP64 sentinel)
@@ -1808,7 +1802,7 @@ class ReadOnlyZipFileSystemTest {
         // Local file header
         ByteBuffer local = ByteBuffer.allocate(30 + nameBytes.length + extra.length)
                 .order(ByteOrder.LITTLE_ENDIAN);
-        local.putInt(0x04034b50);
+        local.putInt(LOCAL_HEADER_SIG);
         local.putShort((short) 20); // version needed
         local.putShort((short) 0); // flags
         local.putShort((short) 0); // method: STORED
@@ -1853,7 +1847,7 @@ class ReadOnlyZipFileSystemTest {
 
         // EOCD
         ByteBuffer eocd = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN);
-        eocd.putInt(0x06054b50);
+        eocd.putInt(EOCD_SIG);
         eocd.putShort((short) 0);
         eocd.putShort((short) 0);
         eocd.putShort((short) 1); // entries on this disk
@@ -1893,7 +1887,7 @@ class ReadOnlyZipFileSystemTest {
         // -- Local file header (sizes and CRC zeroed, bit 3 set) --
         ByteBuffer local = ByteBuffer.allocate(30 + nameBytes.length)
                 .order(ByteOrder.LITTLE_ENDIAN);
-        local.putInt(0x04034b50);
+        local.putInt(LOCAL_HEADER_SIG);
         local.putShort((short) 20); // version needed
         local.putShort((short) 0x08); // flags: bit 3 = data descriptor
         local.putShort((short) 8); // method: DEFLATED
@@ -1910,7 +1904,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- Data descriptor (with signature) --
         ByteBuffer dd = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN);
-        dd.putInt(0x08074b50); // data descriptor signature
+        dd.putInt(DATA_DESCRIPTOR_SIG);
         dd.putInt((int) crcValue);
         dd.putInt(compLen); // compressed size
         dd.putInt(data.length); // uncompressed size
@@ -1944,7 +1938,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- EOCD --
         ByteBuffer eocd = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN);
-        eocd.putInt(0x06054b50);
+        eocd.putInt(EOCD_SIG);
         eocd.putShort((short) 0);
         eocd.putShort((short) 0);
         eocd.putShort((short) 1);
@@ -1984,7 +1978,7 @@ class ReadOnlyZipFileSystemTest {
         // -- Local file header (version 45, bit 3 set, sizes zeroed) --
         ByteBuffer local = ByteBuffer.allocate(30 + nameBytes.length)
                 .order(ByteOrder.LITTLE_ENDIAN);
-        local.putInt(0x04034b50);
+        local.putInt(LOCAL_HEADER_SIG);
         local.putShort((short) 45); // version needed (ZIP64)
         local.putShort((short) 0x08); // flags: bit 3 = data descriptor
         local.putShort((short) 8); // method: DEFLATED
@@ -2002,7 +1996,7 @@ class ReadOnlyZipFileSystemTest {
         // -- ZIP64 data descriptor (with signature) --
         // signature(4) + crc32(4) + compressedSize(8) + uncompressedSize(8)
         ByteBuffer dd = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN);
-        dd.putInt(0x08074b50); // data descriptor signature
+        dd.putInt(DATA_DESCRIPTOR_SIG);
         dd.putInt((int) crcValue);
         dd.putLong(compLen); // compressed size (64-bit)
         dd.putLong(data.length); // uncompressed size (64-bit)
@@ -2039,7 +2033,7 @@ class ReadOnlyZipFileSystemTest {
         // -- ZIP64 EOCD --
         long zip64EocdOffset = out.size();
         ByteBuffer zip64Eocd = ByteBuffer.allocate(56).order(ByteOrder.LITTLE_ENDIAN);
-        zip64Eocd.putInt(0x06064b50);
+        zip64Eocd.putInt(ZIP64_EOCD_SIG);
         zip64Eocd.putLong(44);
         zip64Eocd.putShort((short) 45);
         zip64Eocd.putShort((short) 45);
@@ -2053,7 +2047,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- ZIP64 EOCD locator --
         ByteBuffer locator = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN);
-        locator.putInt(0x07064b50);
+        locator.putInt(ZIP64_EOCD_LOCATOR_SIG);
         locator.putInt(0);
         locator.putLong(zip64EocdOffset);
         locator.putInt(1);
@@ -2061,7 +2055,7 @@ class ReadOnlyZipFileSystemTest {
 
         // -- EOCD --
         ByteBuffer eocd = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN);
-        eocd.putInt(0x06054b50);
+        eocd.putInt(EOCD_SIG);
         eocd.putShort((short) 0);
         eocd.putShort((short) 0);
         eocd.putShort((short) 0xFFFF);
