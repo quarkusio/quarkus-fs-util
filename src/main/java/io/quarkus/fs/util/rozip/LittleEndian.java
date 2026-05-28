@@ -27,7 +27,7 @@ final class LittleEndian {
      * @return the unsigned 16-bit value as an {@code int} in the range 0..65535
      */
     static int readUint16(byte[] buf, int off) {
-        return (short) SHORT_LE.get(buf, off) & 0xFFFF;
+        return Short.toUnsignedInt((short) SHORT_LE.get(buf, off));
     }
 
     /**
@@ -38,7 +38,7 @@ final class LittleEndian {
      * @return the unsigned 32-bit value as a {@code long} in the range 0..4294967295
      */
     static long readUint32(byte[] buf, int off) {
-        return (int) INT_LE.get(buf, off) & 0xFFFFFFFFL;
+        return Integer.toUnsignedLong((int) INT_LE.get(buf, off));
     }
 
     /**
