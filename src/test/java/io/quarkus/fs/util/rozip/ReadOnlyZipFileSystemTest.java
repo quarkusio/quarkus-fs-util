@@ -1004,7 +1004,7 @@ class ReadOnlyZipFileSystemTest {
         // Find compressed data length from the DD itself (at DD offset + 8)
         int ddOffset = -1;
         for (int i = localHeaderEnd; i < raw.length - 16; i++) {
-            if (readLeInt32(raw, i) == 0x08074b50) {
+            if (LittleEndian.readInt32(raw, i) == 0x08074b50) {
                 ddOffset = i;
                 break;
             }
@@ -1603,8 +1603,8 @@ class ReadOnlyZipFileSystemTest {
 
     private static int findCentralDirectoryOffset(byte[] zip) {
         for (int i = zip.length - 22; i >= 0; i--) {
-            if (readLeInt32(zip, i) == 0x06054b50) {
-                return (int) readLeUint32(zip, i + 16);
+            if (LittleEndian.readInt32(zip, i) == 0x06054b50) {
+                return (int) LittleEndian.readUint32(zip, i + 16);
             }
         }
         throw new IllegalStateException("EOCD not found");
@@ -1612,14 +1612,14 @@ class ReadOnlyZipFileSystemTest {
 
     private static void patchCentralDirectoryUncompressedSize(byte[] zip, long newSize) {
         int cdOff = findCentralDirectoryOffset(zip);
-        if (readLeInt32(zip, cdOff) != CENTRAL_DIR_SIG) {
+        if (LittleEndian.readInt32(zip, cdOff) != CENTRAL_DIR_SIG) {
             throw new IllegalStateException("Not a central directory entry at offset " + cdOff);
         }
         writeLeUint32(zip, cdOff + 24, newSize);
     }
 
     private static void clearLocalHeaderDataDescriptorFlag(byte[] zip) {
-        if (readLeInt32(zip, 0) != 0x04034b50) {
+        if (LittleEndian.readInt32(zip, 0) != 0x04034b50) {
             throw new IllegalStateException("Not a local file header at offset 0");
         }
         // Clear bit 3 of the general-purpose flags at local header offset 6
@@ -1627,7 +1627,7 @@ class ReadOnlyZipFileSystemTest {
     }
 
     private static void patchLocalHeaderUncompressedSize(byte[] zip, long newSize) {
-        if (readLeInt32(zip, 0) != 0x04034b50) {
+        if (LittleEndian.readInt32(zip, 0) != 0x04034b50) {
             throw new IllegalStateException("Not a local file header at offset 0");
         }
         writeLeUint32(zip, 22, newSize);
@@ -1635,18 +1635,7 @@ class ReadOnlyZipFileSystemTest {
 
     private static long findCentralDirectoryCompressedSize(byte[] zip) {
         int cdOff = findCentralDirectoryOffset(zip);
-        return readLeUint32(zip, cdOff + 20);
-    }
-
-    private static int readLeInt32(byte[] buf, int off) {
-        return (buf[off] & 0xFF)
-                | ((buf[off + 1] & 0xFF) << 8)
-                | ((buf[off + 2] & 0xFF) << 16)
-                | ((buf[off + 3] & 0xFF) << 24);
-    }
-
-    private static long readLeUint32(byte[] buf, int off) {
-        return readLeInt32(buf, off) & 0xFFFFFFFFL;
+        return LittleEndian.readUint32(zip, cdOff + 20);
     }
 
     private static void writeLeUint32(byte[] buf, int off, long value) {
