@@ -1623,7 +1623,7 @@ class ReadOnlyZipFileSystemTest {
             throw new IllegalStateException("Not a local file header at offset 0");
         }
         // Clear bit 3 of the general-purpose flags at local header offset 6
-        zip[6] = (byte) (zip[6] & ~0x08);
+        zip[6] = (byte) (zip[6] & 0b11110111);
     }
 
     private static void patchLocalHeaderUncompressedSize(byte[] zip, long newSize) {
