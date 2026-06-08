@@ -24,201 +24,40 @@ env:
   MAVEN_ARGS: "-Dformat.skip"
 jobs:
   build:
-    name: JVM Tests - JDK ${{matrix.java.name}}
-    runs-on: ${{ matrix.java.os-name }}
+    name: JVM Tests - JDK ${{matrix.java-version}} ${{matrix.distribution}} ${{matrix.os-name}}
+    runs-on: ${{ matrix.os-name }}
     strategy:
       fail-fast: false
       matrix:
-        java:
-          - {
-            name: "17 Eclipse Temurin",
-            java-version: 17,
-            os-name: "ubuntu-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 Eclipse Temurin",
-            java-version: 21,
-            os-name: "ubuntu-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 Eclipse Temurin",
-            java-version: 25,
-            os-name: "ubuntu-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 Eclipse Temurin",
-            java-version: 26,
-            os-name: "ubuntu-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "17 Zulu OpenJDK",
-            java-version: 17,
-            os-name: "ubuntu-latest",
-            java-vendor: "zulu",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 Zulu OpenJDK",
-            java-version: 21,
-            os-name: "ubuntu-latest",
-            java-vendor: "zulu",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 Zulu OpenJDK",
-            java-version: 25,
-            os-name: "ubuntu-latest",
-            java-vendor: "zulu",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 Zulu OpenJDK",
-            java-version: 26,
-            os-name: "ubuntu-latest",
-            java-vendor: "zulu",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "17 Liberica JDK",
-            java-version: 17,
-            os-name: "ubuntu-latest",
-            java-vendor: "liberica",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 Liberica JDK",
-            java-version: 21,
-            os-name: "ubuntu-latest",
-            java-vendor: "liberica",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 Liberica JDK",
-            java-version: 25,
-            os-name: "ubuntu-latest",
-            java-vendor: "liberica",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 Liberica JDK",
-            java-version: 26,
-            os-name: "ubuntu-latest",
-            java-vendor: "liberica",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "17 IBM Semeru",
-            java-version: 17,
-            os-name: "ubuntu-latest",
-            java-vendor: "semeru",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 IBM Semeru",
-            java-version: 21,
-            os-name: "ubuntu-latest",
-            java-vendor: "semeru",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 IBM Semeru",
-            java-version: 25,
-            os-name: "ubuntu-latest",
-            java-vendor: "semeru",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 IBM Semeru",
-            java-version: 26,
-            os-name: "ubuntu-latest",
-            java-vendor: "semeru",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "17 Eclipse Temurin Windows",
-            java-version: 17,
-            os-name: "windows-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 Eclipse Temurin Windows",
-            java-version: 21,
-            os-name: "windows-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 Eclipse Temurin Windows",
-            java-version: 25,
-            os-name: "windows-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 Eclipse Temurin Windows",
-            java-version: 26,
-            os-name: "windows-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "17 Eclipse Temurin macOS",
-            java-version: 17,
-            os-name: "macos-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "21 Eclipse Temurin macOs",
-            java-version: 21,
-            os-name: "macos-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "25 Eclipse Temurin macOS",
-            java-version: 25,
-            os-name: "macos-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
-          - {
-            name: "26 Eclipse Temurin macOS",
-            java-version: 26,
-            os-name: "macos-latest",
-            java-vendor: "temurin",
-            maven_args: "$MAVEN_ARGS"
-          }
+        java-version: [17, 21, 25]
+        distribution: [temurin, zulu, liberica, semeru]
+        os-name: [ubuntu-latest]
+        include:
+          # Temurin on Windows - stable versions
+          - { java-version: 17, distribution: temurin, os-name: windows-latest }
+          - { java-version: 21, distribution: temurin, os-name: windows-latest }
+          - { java-version: 25, distribution: temurin, os-name: windows-latest }
+          # Temurin on macOS - stable versions
+          - { java-version: 17, distribution: temurin, os-name: macos-latest }
+          - { java-version: 21, distribution: temurin, os-name: macos-latest }
+          - { java-version: 25, distribution: temurin, os-name: macos-latest }
+          # Java 26 - latest, added explicitly per vendor as availability allows
+          - { java-version: 26, distribution: temurin, os-name: ubuntu-latest }
+          - { java-version: 26, distribution: temurin, os-name: windows-latest }
+          - { java-version: 26, distribution: temurin, os-name: macos-latest }
+          - { java-version: 26, distribution: zulu, os-name: ubuntu-latest }
+          - { java-version: 26, distribution: liberica, os-name: ubuntu-latest }
+          - { java-version: 26, distribution: semeru, os-name: ubuntu-latest }
     steps:
       - uses: actions/checkout@v6
-      - name: Get Date
-        id: get-date
-        run: |
-          echo "::set-output name=date::$(/bin/date -u "+%Y-%m")"
-        shell: bash
-      - name: Cache Maven Repository
-        id: cache-maven
-        uses: actions/cache@v5
-        with:
-          path: ~/.m2/repository
-          # refresh cache every month to avoid unlimited growth
-          key: maven-repo-jdk-${{ matrix.java }}-${{ steps.get-date.outputs.date }}
-      - name: Install JDK ${{ matrix.java }}
+      - name: Install JDK ${{ matrix.java-version }} ${{ matrix.distribution }}
         uses: actions/setup-java@v5
         with:
-          distribution: ${{ matrix.java.java-vendor }}
-          java-version: ${{ matrix.java.java-version }}
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java-version }}
+          cache: maven
       - name: Build with Maven
-        run: mvn -B clean install ${{ matrix.java.maven_args }}
+        run: mvn -B clean install $MAVEN_ARGS
       - name: Delete Local Artifacts From Cache
         shell: bash
         run: rm -rf ~/.m2/repository/io/quarkus/quarkus-fs-util*
