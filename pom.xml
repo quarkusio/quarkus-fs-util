@@ -57,7 +57,7 @@
 
         <formatter-maven-plugin.version>2.29.0</formatter-maven-plugin.version>
         <impsort-maven-plugin.version>1.13.0</impsort-maven-plugin.version>
-        <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <surefire-plugin.version>3.5.6</surefire-plugin.version>
 
         <!-- maven-release-plugin -->
         <releaseProfiles>release</releaseProfiles>
