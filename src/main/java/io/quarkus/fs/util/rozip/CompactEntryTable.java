@@ -5,7 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A memory-efficient, immutable index of ZIP central directory entries.
@@ -384,17 +386,20 @@ final class CompactEntryTable {
             return null;
         }
 
+        // A directory entry's name has its trailing '/' stripped when stored (see the
+        // parsing loop), so an explicit directory entry (e.g. "a/b") can sort apart from
+        // the entries nested under it (e.g. "a/b/c") whenever a sibling shares the
+        // directory's name as a prefix (e.g. the file "a/b-x"). The same immediate child
+        // name can therefore be produced from non-adjacent positions, so deduplicate
+        // across the whole range rather than only collapsing consecutive duplicates.
         List<String> children = new ArrayList<>();
-        int prevStart = -1;
-        int prevLen = -1;
+        Set<String> seen = new HashSet<>();
         for (int i = start; i < entryCount && nameStartsWith(i, prefix); i++) {
             int childStart = nameOffsets[i] + prefix.length;
             int childLen = immediateChildLen(childStart, nameOffsets[i + 1]);
-            if (childLen != prevLen
-                    || !regionEquals(nameBytes, childStart, nameBytes, prevStart, childLen)) {
-                children.add(new String(nameBytes, childStart, childLen, StandardCharsets.UTF_8));
-                prevStart = childStart;
-                prevLen = childLen;
+            String child = new String(nameBytes, childStart, childLen, StandardCharsets.UTF_8);
+            if (seen.add(child)) {
+                children.add(child);
             }
         }
         return Collections.unmodifiableList(children);

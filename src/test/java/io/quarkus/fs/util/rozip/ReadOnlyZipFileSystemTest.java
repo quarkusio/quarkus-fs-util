@@ -142,6 +142,45 @@ class ReadOnlyZipFileSystemTest {
     }
 
     @Test
+    void listDirectoryWithPrefixSiblingFile() throws IOException {
+        // "menu" is a directory; "menu-sidebar.html" is a sibling file whose name
+        // starts with the directory name. The directory must be listed exactly once.
+        Path zip = createZip("test.zip",
+                entry("tags/menu/item.html", "i"),
+                entry("tags/menu/group.html", "g"),
+                entry("tags/menu-sidebar.html", "s"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip);
+                DirectoryStream<Path> stream = Files.newDirectoryStream(fs.getPath("/tags"))) {
+            List<String> names = new ArrayList<>();
+            stream.forEach(p -> names.add(p.getFileName().toString()));
+            Collections.sort(names);
+            assertEquals(List.of("menu", "menu-sidebar.html"), names);
+        }
+    }
+
+    @Test
+    void walkDirectoryTreeWithPrefixSiblingFile() throws IOException {
+        // Regression: a subdirectory whose name is a prefix of a sibling file
+        // (here "menu/" next to "menu-sidebar.html") was walked twice, yielding
+        // duplicate paths for everything under it. Includes explicit directory
+        // entries, as produced by the Maven jar plugin.
+        Path zip = createZip("test.zip",
+                entry("tags/", ""),
+                entry("tags/menu/", ""),
+                entry("tags/menu/item.html", "i"),
+                entry("tags/menu/group.html", "g"),
+                entry("tags/menu-sidebar.html", "s"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip);
+                Stream<Path> stream = Files.walk(fs.getPath("/"))) {
+            List<String> paths = stream.map(Path::toString).collect(Collectors.toList());
+            List<String> distinct = paths.stream().distinct().collect(Collectors.toList());
+            assertEquals(distinct, paths, "Files.walk should not visit any path twice; got " + paths);
+        }
+    }
+
+    @Test
     void listDirectory() throws IOException {
         Path zip = createZip("test.zip",
                 entry("dir/alpha.txt", "a"),
