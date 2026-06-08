@@ -321,7 +321,7 @@ final class CompactEntryTable {
      * @return the entry info, or {@code null} if not found
      */
     ZipEntryInfo getEntry(String name) {
-        int index = binarySearch(toUTF8(name));
+        int index = isAscii(name) ? binarySearchAscii(name) : binarySearch(toUTF8(name));
         if (index < 0) {
             return null;
         }
@@ -337,6 +337,9 @@ final class CompactEntryTable {
      * @return {@code true} if the name exists
      */
     boolean exists(String name) {
+        if (isAscii(name)) {
+            return binarySearchAscii(name) >= 0 || hasEntriesUnderAscii(name);
+        }
         byte[] nameUtf8 = toUTF8(name);
         if (binarySearch(nameUtf8) >= 0) {
             return true;
@@ -353,7 +356,7 @@ final class CompactEntryTable {
      * @return {@code true} if at least one entry is under this directory
      */
     boolean hasEntriesUnder(String name) {
-        return hasEntriesUnder(toUTF8(name));
+        return isAscii(name) ? hasEntriesUnderAscii(name) : hasEntriesUnder(toUTF8(name));
     }
 
     /**
@@ -369,9 +372,32 @@ final class CompactEntryTable {
      *         not a directory
      */
     List<String> getDirectoryChildren(String name) {
+        return isAscii(name) ? getDirectoryChildrenAscii(name) : getDirectoryChildrenBytes(name);
+    }
+
+    private List<String> getDirectoryChildrenAscii(String name) {
+        int prefixLen = name.isEmpty() ? 0 : name.length() + 1;
+        int start = lowerBoundAscii(name);
+        if (start >= entryCount || !nameStartsWithAscii(start, name)) {
+            if (name.isEmpty()) {
+                return List.of();
+            }
+            int idx = binarySearchAscii(name);
+            if (idx >= 0 && directories.get(idx)) {
+                return List.of();
+            }
+            return null;
+        }
+        int end = start + 1;
+        while (end < entryCount && nameStartsWithAscii(end, name)) {
+            end++;
+        }
+        return collectChildren(start, end, prefixLen);
+    }
+
+    private List<String> getDirectoryChildrenBytes(String name) {
         byte[] nameUtf8 = toUTF8(name);
         byte[] prefix = toPrefixBytes(nameUtf8);
-
         int start = lowerBound(prefix);
         if (start >= entryCount || !nameStartsWith(start, prefix)) {
             if (nameUtf8.length == 0) {
@@ -383,12 +409,19 @@ final class CompactEntryTable {
             }
             return null;
         }
+        int end = start + 1;
+        while (end < entryCount && nameStartsWith(end, prefix)) {
+            end++;
+        }
+        return collectChildren(start, end, prefix.length);
+    }
 
+    private List<String> collectChildren(int start, int end, int prefixLen) {
         List<String> children = new ArrayList<>();
         int prevStart = -1;
         int prevLen = -1;
-        for (int i = start; i < entryCount && nameStartsWith(i, prefix); i++) {
-            int childStart = nameOffsets[i] + prefix.length;
+        for (int i = start; i < end; i++) {
+            int childStart = nameOffsets[i] + prefixLen;
             int childLen = immediateChildLen(childStart, nameOffsets[i + 1]);
             if (childLen != prevLen
                     || !regionEquals(nameBytes, childStart, nameBytes, prevStart, childLen)) {
@@ -533,6 +566,164 @@ final class CompactEntryTable {
     }
 
     /**
+     * Returns {@code true} if every character in the string is in the
+     * ASCII range (0–127). When true, each {@code char} maps to exactly
+     * one UTF-8 byte, so the {@code *Ascii} lookup methods can compare
+     * characters directly against stored UTF-8 bytes without allocating
+     * an intermediate {@code byte[]}.
+     * <p>
+     * ZIP entry names are overwhelmingly ASCII (Java package paths,
+     * resource filenames, {@code META-INF/} entries), so this fast path
+     * covers the vast majority of lookups in practice. Non-ASCII names
+     * fall back to the {@code byte[]}-based methods via {@link #toUTF8}.
+     */
+    private static boolean isAscii(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) >= 128) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Allocation-free binary search for an exact name match against an
+     * ASCII string. Compares {@link String#charAt(int)} values directly
+     * against stored UTF-8 bytes. Only valid when the query is pure ASCII.
+     *
+     * @param query the ASCII entry name to search for
+     * @return the index if found, or {@code -(insertion point) - 1} if not
+     * @see #binarySearch(byte[])
+     */
+    private int binarySearchAscii(String query) {
+        int lo = 0, hi = entryCount - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            int cmp = compareNameAscii(mid, query);
+            if (cmp < 0) {
+                lo = mid + 1;
+            } else if (cmp > 0) {
+                hi = mid - 1;
+            } else {
+                return mid;
+            }
+        }
+        return -(lo + 1);
+    }
+
+    /**
+     * Compares the name at {@code index} against an ASCII query string
+     * using unsigned byte comparison, without allocating a {@code byte[]}.
+     * Returns negative if the stored name is less than the query, zero
+     * if equal, positive if greater.
+     *
+     * @see #compareName(int, byte[], int, int)
+     */
+    private int compareNameAscii(int index, String query) {
+        int start = nameOffsets[index];
+        int len = nameOffsets[index + 1] - start;
+        int queryLen = query.length();
+        int minLen = Math.min(len, queryLen);
+        for (int i = 0; i < minLen; i++) {
+            int diff = (nameBytes[start + i] & 0xFF) - query.charAt(i);
+            if (diff != 0) {
+                return diff;
+            }
+        }
+        return len - queryLen;
+    }
+
+    /**
+     * Finds the index of the first entry whose name is greater than or
+     * equal to {@code dirName + "/"} without allocating a prefix
+     * {@code byte[]}. Returns {@link #entryCount} if all names are
+     * strictly less than the prefix, or {@code 0} for the root
+     * directory (empty {@code dirName}).
+     *
+     * @see #lowerBound(byte[])
+     */
+    private int lowerBoundAscii(String dirName) {
+        if (dirName.isEmpty()) {
+            return 0;
+        }
+        int lo = 0, hi = entryCount;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (compareNamePrefixAscii(mid, dirName) < 0) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
+    /**
+     * Compares the name at {@code index} against the virtual prefix
+     * {@code dirName + "/"} for lower-bound searching, without
+     * allocating a prefix {@code byte[]}. Returns negative if the
+     * name is strictly less than the prefix, zero or positive if the
+     * name starts with (or is greater than) the prefix.
+     *
+     * @see #compareNamePrefix(int, byte[])
+     */
+    private int compareNamePrefixAscii(int index, String dirName) {
+        int start = nameOffsets[index];
+        int len = nameOffsets[index + 1] - start;
+        int prefixLen = dirName.length() + 1;
+        int minLen = Math.min(len, prefixLen);
+        for (int i = 0; i < minLen; i++) {
+            int b = nameBytes[start + i] & 0xFF;
+            int c = i < dirName.length() ? dirName.charAt(i) : '/';
+            int diff = b - c;
+            if (diff != 0) {
+                return diff;
+            }
+        }
+        return len < prefixLen ? -1 : 0;
+    }
+
+    /**
+     * Returns {@code true} if the name at {@code index} starts with
+     * {@code dirName + "/"}, comparing characters directly against
+     * stored UTF-8 bytes without allocating a prefix {@code byte[]}.
+     * Returns {@code true} for any entry when {@code dirName} is empty
+     * (root directory).
+     *
+     * @see #nameStartsWith(int, byte[])
+     */
+    private boolean nameStartsWithAscii(int index, String dirName) {
+        if (dirName.isEmpty()) {
+            return true;
+        }
+        int start = nameOffsets[index];
+        int len = nameOffsets[index + 1] - start;
+        int prefixLen = dirName.length() + 1;
+        if (len < prefixLen) {
+            return false;
+        }
+        for (int i = 0; i < dirName.length(); i++) {
+            if ((nameBytes[start + i] & 0xFF) != dirName.charAt(i)) {
+                return false;
+            }
+        }
+        return nameBytes[start + dirName.length()] == '/';
+    }
+
+    /**
+     * Allocation-free variant of {@link #hasEntriesUnder(byte[])} that
+     * checks whether any entry name starts with {@code name + "/"}
+     * by comparing the ASCII string directly against stored UTF-8 bytes.
+     *
+     * @param name the directory name to check
+     * @return {@code true} if at least one entry exists under this directory
+     */
+    private boolean hasEntriesUnderAscii(String name) {
+        int lb = lowerBoundAscii(name);
+        return lb < entryCount && nameStartsWithAscii(lb, name);
+    }
+
+    /**
      * Encodes a string to UTF-8 bytes. Single conversion point for all public methods.
      */
     private static byte[] toUTF8(String s) {
@@ -566,8 +757,7 @@ final class CompactEntryTable {
      * {@code int} values.
      */
     private static void mergeSort(int[] arr, int len, IntComparator cmp) {
-        int[] tmp = new int[len];
-        int[] src = arr, dst = tmp;
+        int[] src = arr, dst = new int[len];
         for (int width = 1; width < len; width *= 2) {
             for (int lo = 0; lo < len; lo += width * 2) {
                 int mid = Math.min(lo + width, len);
