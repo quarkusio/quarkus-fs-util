@@ -45,6 +45,20 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
+            name: "25 Eclipse Temurin",
+            java-version: 25,
+            os-name: "ubuntu-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 Eclipse Temurin",
+            java-version: 26,
+            os-name: "ubuntu-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
             name: "17 Zulu OpenJDK",
             java-version: 17,
             os-name: "ubuntu-latest",
@@ -54,6 +68,20 @@ jobs:
           - {
             name: "21 Zulu OpenJDK",
             java-version: 21,
+            os-name: "ubuntu-latest",
+            java-vendor: "zulu",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "25 Zulu OpenJDK",
+            java-version: 25,
+            os-name: "ubuntu-latest",
+            java-vendor: "zulu",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 Zulu OpenJDK",
+            java-version: 26,
             os-name: "ubuntu-latest",
             java-vendor: "zulu",
             maven_args: "$MAVEN_ARGS"
@@ -73,6 +101,48 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
+            name: "25 Liberica JDK",
+            java-version: 25,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 Liberica JDK",
+            java-version: 26,
+            os-name: "ubuntu-latest",
+            java-vendor: "liberica",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "17 IBM Semeru",
+            java-version: 17,
+            os-name: "ubuntu-latest",
+            java-vendor: "semeru",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "21 IBM Semeru",
+            java-version: 21,
+            os-name: "ubuntu-latest",
+            java-vendor: "semeru",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "25 IBM Semeru",
+            java-version: 25,
+            os-name: "ubuntu-latest",
+            java-vendor: "semeru",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 IBM Semeru",
+            java-version: 26,
+            os-name: "ubuntu-latest",
+            java-vendor: "semeru",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
             name: "17 Eclipse Temurin Windows",
             java-version: 17,
             os-name: "windows-latest",
@@ -87,6 +157,20 @@ jobs:
             maven_args: "$MAVEN_ARGS"
           }
           - {
+            name: "25 Eclipse Temurin Windows",
+            java-version: 25,
+            os-name: "windows-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 Eclipse Temurin Windows",
+            java-version: 26,
+            os-name: "windows-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
             name: "17 Eclipse Temurin macOS",
             java-version: 17,
             os-name: "macos-latest",
@@ -96,6 +180,20 @@ jobs:
           - {
             name: "21 Eclipse Temurin macOs",
             java-version: 21,
+            os-name: "macos-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "25 Eclipse Temurin macOS",
+            java-version: 25,
+            os-name: "macos-latest",
+            java-vendor: "temurin",
+            maven_args: "$MAVEN_ARGS"
+          }
+          - {
+            name: "26 Eclipse Temurin macOS",
+            java-version: 26,
             os-name: "macos-latest",
             java-vendor: "temurin",
             maven_args: "$MAVEN_ARGS"
