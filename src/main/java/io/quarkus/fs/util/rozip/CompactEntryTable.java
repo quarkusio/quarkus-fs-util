@@ -45,11 +45,16 @@ import java.util.List;
  * <h2>Directory tree</h2>
  *
  * Directory children are derived from the sorted entry names at query
- * time rather than stored in a separate map. Because entries sharing
- * a directory prefix are adjacent in sorted
- * order, listing the children of directory {@code "com/example"} is a
- * binary search for the prefix {@code "com/example/"} followed by a
- * forward scan that extracts unique immediate child names. Implicit
+ * time rather than stored in a separate map. Entries sharing a
+ * directory prefix are generally adjacent in sorted order, so listing
+ * the children of directory {@code "com/example"} is a binary search
+ * for the prefix {@code "com/example/"} followed by a forward scan
+ * that extracts unique immediate child names. A slash-stripped
+ * directory entry can sort apart from its nested entries when a
+ * sibling file shares the directory name as a prefix (e.g.
+ * {@code "menu-sidebar.html"} next to {@code "menu/"}); the forward
+ * scan handles this by detecting and skipping such non-adjacent
+ * duplicates. Implicit
  * directories (not present as explicit entries in the ZIP but implied
  * by file paths) are detected by checking whether any entry name
  * starts with the directory prefix.
@@ -416,21 +421,136 @@ final class CompactEntryTable {
         return collectChildren(start, end, prefix.length);
     }
 
+    /**
+     * Extracts the unique immediate child names from the entry range
+     * {@code [start, end)}. Each entry's child is the segment after
+     * {@code prefixLen} bytes up to the next {@code '/'} or end of name.
+     * <p>
+     * Consecutive duplicates are collapsed via a cached byte comparison.
+     * Non-adjacent duplicates — caused by slash-stripped directory entries
+     * sorting apart from their nested entries when a prefix-sharing sibling
+     * intervenes — are detected by a {@code possibleDup} heuristic and
+     * resolved against a lazily allocated index of previously seen children.
+     *
+     * @param start first entry index in the range (inclusive)
+     * @param end last entry index in the range (exclusive)
+     * @param prefixLen byte length of the parent directory prefix
+     * @return an unmodifiable list of unique immediate child names
+     */
     private List<String> collectChildren(int start, int end, int prefixLen) {
         List<String> children = new ArrayList<>();
+        int[] seenAt = null;
+        int seenCount = 0;
         int prevStart = -1;
         int prevLen = -1;
         for (int i = start; i < end; i++) {
             int childStart = nameOffsets[i] + prefixLen;
             int childLen = immediateChildLen(childStart, nameOffsets[i + 1]);
-            if (childLen != prevLen
-                    || !regionEquals(nameBytes, childStart, nameBytes, prevStart, childLen)) {
-                children.add(new String(nameBytes, childStart, childLen, StandardCharsets.UTF_8));
-                prevStart = childStart;
-                prevLen = childLen;
+            if (childLen == prevLen
+                    && regionEquals(nameBytes, childStart, nameBytes, prevStart, childLen)) {
+                continue;
             }
+            // A slash-stripped directory entry can sort apart from its nested
+            // entries when a sibling shares the directory name as a prefix
+            // (e.g. "menu-sidebar.html" next to "menu/"), because '-' (0x2D)
+            // sorts before '/' (0x2F). Detect this by checking whether the
+            // child name got shorter while remaining a byte prefix of the
+            // previous child — that only happens at the duplicate boundary.
+            boolean possibleDup = childLen < prevLen
+                    && regionEquals(nameBytes, childStart, nameBytes, prevStart, childLen);
+            prevStart = childStart;
+            prevLen = childLen;
+            if (possibleDup) {
+                if (seenAt == null) {
+                    seenAt = new int[seenCount + (end - i)];
+                    backfillSeenAt(seenAt, seenCount, start, i, prefixLen);
+                }
+                if (isSeenChild(seenAt, seenCount, prefixLen, childStart, childLen)) {
+                    continue;
+                }
+            }
+            if (seenAt != null) {
+                seenAt[seenCount] = i;
+            }
+            seenCount++;
+            children.add(new String(nameBytes, childStart, childLen, StandardCharsets.UTF_8));
         }
         return Collections.unmodifiableList(children);
+    }
+
+    /**
+     * Populates {@code seenAt} with the entry indices of the first
+     * {@code seenCount} unique children in {@code [start, current)}.
+     * Called lazily when the first {@code possibleDup} is detected, so
+     * that the common case (no non-adjacent duplicates) avoids the
+     * allocation and this scan entirely.
+     * <p>
+     * Consecutive duplicates are skipped using a boundary check at
+     * {@code sStart + matchLen} — if the byte there is {@code '/'}
+     * or at the entry end, the child has the same length as the
+     * previous match and only a byte comparison is needed.
+     * {@code immediateChildLen} is called only once per unique child.
+     *
+     * @param seenAt target array to fill with entry indices
+     * @param seenCount number of unique children to find
+     * @param start first entry index in the range (inclusive)
+     * @param current entry index where the scan stopped (exclusive)
+     * @param prefixLen byte length of the parent directory prefix
+     */
+    private void backfillSeenAt(int[] seenAt, int seenCount, int start, int current, int prefixLen) {
+        int idx = 0;
+        int matchStart = -1;
+        int matchLen = -1;
+        for (int i = start; i < current && idx < seenCount; i++) {
+            int sStart = nameOffsets[i] + prefixLen;
+            int sEnd = nameOffsets[i + 1];
+            if (matchLen >= 0
+                    && sStart + matchLen <= sEnd
+                    && (sStart + matchLen == sEnd || nameBytes[sStart + matchLen] == '/')
+                    && regionEquals(nameBytes, sStart, nameBytes, matchStart, matchLen)) {
+                continue;
+            }
+            matchLen = immediateChildLen(sStart, sEnd);
+            matchStart = sStart;
+            seenAt[idx++] = i;
+        }
+    }
+
+    /**
+     * Checks whether the child name at {@code (childStart, childLen)} has
+     * already been recorded in {@code seenAt}. Iterates backwards because
+     * the duplicate typically sits just before the intervening sibling that
+     * caused it to sort apart from its nested entries. Skips entries early
+     * using two checks: a first-byte comparison to detect when the sorted
+     * names fall below the target, and a boundary check at
+     * {@code sStart + childLen} to reject longer children without scanning
+     * for {@code '/'}.
+     *
+     * @param seenAt entry indices of unique children found so far
+     * @param seenCount number of valid entries in {@code seenAt}
+     * @param prefixLen length of the parent directory prefix in {@code nameBytes}
+     * @param childStart start offset of the child name in {@code nameBytes}
+     * @param childLen length of the child name in bytes
+     * @return {@code true} if the child was already seen
+     */
+    private boolean isSeenChild(int[] seenAt, int seenCount, int prefixLen,
+            int childStart, int childLen) {
+        byte firstByte = nameBytes[childStart];
+        for (int j = seenCount - 1; j >= 0; j--) {
+            int sStart = nameOffsets[seenAt[j]] + prefixLen;
+            if (nameBytes[sStart] < firstByte) {
+                break;
+            }
+            int sEnd = nameOffsets[seenAt[j] + 1];
+            if (sStart + childLen > sEnd
+                    || (sStart + childLen < sEnd && nameBytes[sStart + childLen] != '/')) {
+                continue;
+            }
+            if (regionEquals(nameBytes, childStart, nameBytes, sStart, childLen)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
