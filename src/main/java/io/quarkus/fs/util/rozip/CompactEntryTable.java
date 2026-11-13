@@ -164,7 +164,9 @@ final class CompactEntryTable {
             while (nameLen > 0 && cdBytes[nameStart + nameLen - 1] == '/') {
                 nameLen--;
             }
-            nameLen = collapseSlashes(cdBytes, nameStart, nameLen);
+            int nameEnd = nameStart + nameLen;
+            nameStart = collapseSlashes(cdBytes, nameStart, nameEnd);
+            nameLen = nameEnd - nameStart;
             if (nameLen == 0) {
                 // The entry denotes the root directory, which always exists.
                 pos += entrySize;
@@ -208,30 +210,29 @@ final class CompactEntryTable {
 
     /**
      * Collapses each run of {@code '/'} in the name stored at
-     * {@code bytes[start, start + len)} into a single {@code '/'}, shifting
-     * the rest of the name left in place.
+     * {@code bytes[start, end)} into a single {@code '/'}, in place and in one
+     * pass. The name is walked backwards, so the write position is never below
+     * the read position and the result is the suffix of the range that begins
+     * at the returned index. Names without redundant slashes are not copied.
      *
      * @param bytes the array holding the name
      * @param start the start offset of the name
-     * @param len the length of the name
-     * @return the length of the collapsed name
+     * @param end the end offset of the name (exclusive)
+     * @return the start offset of the collapsed name, which ends at {@code end}
      */
-    private static int collapseSlashes(byte[] bytes, int start, int len) {
-        int end = start + len;
-        int i = start + 1;
-        while (i < end && (bytes[i] != '/' || bytes[i - 1] != '/')) {
-            i++;
-        }
-        if (i >= end) {
-            return len;
-        }
-        int out = i;
-        for (i++; i < end; i++) {
-            if (bytes[i] != '/' || bytes[out - 1] != '/') {
-                bytes[out++] = bytes[i];
+    private static int collapseSlashes(byte[] bytes, int start, int end) {
+        int to = end;
+        for (int from = end - 1; from >= start; from--) {
+            byte b = bytes[from];
+            if (b == '/' && from > start && bytes[from - 1] == '/') {
+                continue;
+            }
+            to--;
+            if (to != from) {
+                bytes[to] = b;
             }
         }
-        return out - start;
+        return to;
     }
 
     private static CompactEntryTable empty() {

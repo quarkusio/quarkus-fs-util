@@ -193,13 +193,16 @@ class ReadOnlyZipFileSystemTest {
                 entry("dir//", ""),
                 entry("dir/file.txt", "f"),
                 entry("a//b.txt", "b"),
-                entry("//c.txt", "c"));
+                entry("//c.txt", "c"),
+                entry("x///y//z.txt", "z"));
 
         try (FileSystem fs = ReadOnlyZipFileSystem.open(zip);
                 Stream<Path> stream = Files.walk(fs.getPath("/"))) {
             // limit() makes the test fail rather than hang if a directory is its own child
             List<String> paths = stream.limit(100).map(Path::toString).sorted().collect(Collectors.toList());
-            assertEquals(List.of("/", "/a", "/a/b.txt", "/c.txt", "/dir", "/dir/file.txt"), paths);
+            assertEquals(
+                    List.of("/", "/a", "/a/b.txt", "/c.txt", "/dir", "/dir/file.txt", "/x", "/x/y", "/x/y/z.txt"),
+                    paths);
         }
     }
 
