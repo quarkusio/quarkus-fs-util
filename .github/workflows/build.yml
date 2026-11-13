@@ -49,7 +49,7 @@ jobs:
           - { java-version: 26, distribution: liberica, os-name: ubuntu-latest }
           - { java-version: 26, distribution: semeru, os-name: ubuntu-latest }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install JDK ${{ matrix.java-version }} ${{ matrix.distribution }}
         uses: actions/setup-java@v5
         with:
