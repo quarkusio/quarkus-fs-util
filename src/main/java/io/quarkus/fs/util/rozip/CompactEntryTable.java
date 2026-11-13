@@ -101,7 +101,7 @@ final class CompactEntryTable {
      * into {@code cdBytes} throughout parsing and sorting, then copies the
      * sorted names into a single concatenated byte array.
      *
-     * @param cdBytes the raw central directory bytes
+     * @param cdBytes the raw central directory bytes; entry names are normalized in place
      * @param cdSize the number of valid bytes in {@code cdBytes}
      * @param totalEntries the declared number of entries
      * @param cdOffset the absolute file offset of the central directory (for error messages)
@@ -144,21 +144,31 @@ final class CompactEntryTable {
             int commentLen = LittleEndian.readUint16(cdBytes, pos + CD_OFF_COMMENT_LENGTH);
             long localHeaderOffset = LittleEndian.readUint32(cdBytes, pos + CD_OFF_LOCAL_HEADER_OFFSET);
 
-            if (pos + CD_HEADER_SIZE + origNameLen + extraLen + commentLen > cdSize) {
+            int entrySize = CD_HEADER_SIZE + origNameLen + extraLen + commentLen;
+            if (pos + entrySize > cdSize) {
                 throw new IOException("Truncated central directory entry at offset " + (cdOffset + pos));
             }
 
             int extraOffset = pos + CD_HEADER_SIZE + origNameLen;
 
+            // Like the JDK ZIP file system, strip leading and trailing slashes and collapse
+            // redundant ones (e.g. "dir//"), so that no name component is empty. An empty
+            // child name would resolve to its parent directory and make walks never end.
             int nameStart = pos + CD_HEADER_SIZE;
             int nameLen = origNameLen;
-            if (nameLen > 0 && cdBytes[nameStart] == '/') {
+            while (nameLen > 0 && cdBytes[nameStart] == '/') {
                 nameStart++;
                 nameLen--;
             }
             boolean isDirectory = nameLen > 0 && cdBytes[nameStart + nameLen - 1] == '/';
-            if (isDirectory) {
+            while (nameLen > 0 && cdBytes[nameStart + nameLen - 1] == '/') {
                 nameLen--;
+            }
+            nameLen = collapseSlashes(cdBytes, nameStart, nameLen);
+            if (nameLen == 0) {
+                // The entry denotes the root directory, which always exists.
+                pos += entrySize;
+                continue;
             }
 
             nameStarts[actualCount] = nameStart;
@@ -188,12 +198,40 @@ final class CompactEntryTable {
             }
 
             actualCount++;
-            pos += CD_HEADER_SIZE + origNameLen + extraLen + commentLen;
+            pos += entrySize;
         }
 
         return sortAndBuildFromCd(actualCount, cdBytes, nameStarts, nameLens,
                 tmpLocalHeaderOffsets, tmpCompressedSizes, tmpUncompressedSizes,
                 tmpCrc32Values, tmpLastModifiedTimes, tmpCompressionMethods, tmpDirectories);
+    }
+
+    /**
+     * Collapses each run of {@code '/'} in the name stored at
+     * {@code bytes[start, start + len)} into a single {@code '/'}, shifting
+     * the rest of the name left in place.
+     *
+     * @param bytes the array holding the name
+     * @param start the start offset of the name
+     * @param len the length of the name
+     * @return the length of the collapsed name
+     */
+    private static int collapseSlashes(byte[] bytes, int start, int len) {
+        int end = start + len;
+        int i = start + 1;
+        while (i < end && (bytes[i] != '/' || bytes[i - 1] != '/')) {
+            i++;
+        }
+        if (i >= end) {
+            return len;
+        }
+        int out = i;
+        for (i++; i < end; i++) {
+            if (bytes[i] != '/' || bytes[out - 1] != '/') {
+                bytes[out++] = bytes[i];
+            }
+        }
+        return out - start;
     }
 
     private static CompactEntryTable empty() {
