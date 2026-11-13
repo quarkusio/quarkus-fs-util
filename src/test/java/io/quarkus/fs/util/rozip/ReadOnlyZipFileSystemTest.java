@@ -181,6 +181,48 @@ class ReadOnlyZipFileSystemTest {
     }
 
     @Test
+    void walkDirectoryTreeWithRedundantSlashesInEntryNames() throws IOException {
+        // Regression: an entry name with a doubled slash (e.g. "dir//", found in
+        // the PopperJS WebJar and in the JDK's ct.sym) yielded an empty child name,
+        // which resolved back to its parent directory, so Files.walk never ended.
+        // Redundant slashes are collapsed as in the JDK ZIP file system, and an
+        // entry named "/" is the root directory.
+        Path zip = createZip("test.zip",
+                entry("/", ""),
+                entry("dir/", ""),
+                entry("dir//", ""),
+                entry("dir/file.txt", "f"),
+                entry("a//b.txt", "b"),
+                entry("//c.txt", "c"),
+                entry("x///y//z.txt", "z"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip);
+                Stream<Path> stream = Files.walk(fs.getPath("/"))) {
+            // limit() makes the test fail rather than hang if a directory is its own child
+            List<String> paths = stream.limit(100).map(Path::toString).sorted().collect(Collectors.toList());
+            assertEquals(
+                    List.of("/", "/a", "/a/b.txt", "/c.txt", "/dir", "/dir/file.txt", "/x", "/x/y", "/x/y/z.txt"),
+                    paths);
+        }
+    }
+
+    @Test
+    void readEntriesWithRedundantSlashesInNames() throws IOException {
+        Path zip = createZip("test.zip",
+                entry("dir//", ""),
+                entry("a//b.txt", "b"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertTrue(Files.isDirectory(fs.getPath("/dir")));
+            try (Stream<Path> stream = Files.list(fs.getPath("/dir"))) {
+                assertEquals(0, stream.count());
+            }
+            assertTrue(Files.isDirectory(fs.getPath("/a")));
+            assertEquals("b", Files.readString(fs.getPath("/a/b.txt")));
+        }
+    }
+
+    @Test
     void listDirectory() throws IOException {
         Path zip = createZip("test.zip",
                 entry("dir/alpha.txt", "a"),
