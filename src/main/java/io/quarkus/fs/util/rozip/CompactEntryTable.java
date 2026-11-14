@@ -151,22 +151,15 @@ final class CompactEntryTable {
 
             int extraOffset = pos + CD_HEADER_SIZE + origNameLen;
 
-            // Like the JDK ZIP file system, strip leading and trailing slashes and collapse
-            // redundant ones (e.g. "dir//"), so that no name component is empty. An empty
-            // child name would resolve to its parent directory and make walks never end.
+            // Canonicalize the name so that it has no empty, "." or ".." segments. Paths
+            // are normalized before lookup, so such a segment would make the entry
+            // unreachable, and a child named "", "." or ".." would resolve back to an
+            // ancestor directory and make walks never end.
             int nameStart = pos + CD_HEADER_SIZE;
-            int nameLen = origNameLen;
-            while (nameLen > 0 && cdBytes[nameStart] == '/') {
-                nameStart++;
-                nameLen--;
-            }
-            boolean isDirectory = nameLen > 0 && cdBytes[nameStart + nameLen - 1] == '/';
-            while (nameLen > 0 && cdBytes[nameStart + nameLen - 1] == '/') {
-                nameLen--;
-            }
-            int nameEnd = nameStart + nameLen;
-            nameStart = collapseSlashes(cdBytes, nameStart, nameEnd);
-            nameLen = nameEnd - nameStart;
+            int nameEnd = nameStart + origNameLen;
+            boolean isDirectory = isDirectoryName(cdBytes, nameStart, nameEnd);
+            nameStart = canonicalizeName(cdBytes, nameStart, nameEnd);
+            int nameLen = nameEnd - nameStart;
             if (nameLen == 0) {
                 // The entry denotes the root directory, which always exists.
                 pos += entrySize;
@@ -209,28 +202,77 @@ final class CompactEntryTable {
     }
 
     /**
-     * Collapses each run of {@code '/'} in the name stored at
-     * {@code bytes[start, end)} into a single {@code '/'}, in place and in one
-     * pass. The name is walked backwards, so the write position is never below
-     * the read position and the result is the suffix of the range that begins
-     * at the returned index. Names without redundant slashes are not copied.
+     * Returns {@code true} if the name stored at {@code bytes[start, end)}
+     * denotes a directory, that is, if it ends with {@code '/'} or its last
+     * segment is {@code "."} or {@code ".."}.
      *
      * @param bytes the array holding the name
      * @param start the start offset of the name
      * @param end the end offset of the name (exclusive)
-     * @return the start offset of the collapsed name, which ends at {@code end}
+     * @return {@code true} if the name denotes a directory
      */
-    private static int collapseSlashes(byte[] bytes, int start, int end) {
+    private static boolean isDirectoryName(byte[] bytes, int start, int end) {
+        int dots = 0;
+        for (int i = end - 1; i >= start; i--) {
+            byte b = bytes[i];
+            if (b == '/') {
+                return true;
+            }
+            if (b != '.' || ++dots > 2) {
+                return false;
+            }
+        }
+        return dots > 0;
+    }
+
+    /**
+     * Canonicalizes the name stored at {@code bytes[start, end)} in place and
+     * in one pass, the same way absolute paths are normalized before lookup:
+     * empty segments (from leading, trailing or repeated {@code '/'}) and
+     * {@code "."} segments are removed, each {@code ".."} segment removes the
+     * segment before it, and {@code ".."} segments that would go above the
+     * root are dropped.
+     * <p>
+     * The name is walked backwards, counting the {@code ".."} segments that
+     * remain to be applied, and the segments that are kept are moved to the
+     * end of the range. The write position is never below the read position,
+     * so the result is the suffix of the range that begins at the returned
+     * index. Names that are already canonical are not copied.
+     *
+     * @param bytes the array holding the name
+     * @param start the start offset of the name
+     * @param end the end offset of the name (exclusive)
+     * @return the start offset of the canonical name, which ends at {@code end}
+     *         and is empty if the name denotes the root directory
+     */
+    private static int canonicalizeName(byte[] bytes, int start, int end) {
         int to = end;
-        for (int from = end - 1; from >= start; from--) {
-            byte b = bytes[from];
-            if (b == '/' && from > start && bytes[from - 1] == '/') {
-                continue;
+        int skip = 0;
+        int segmentEnd = end;
+        while (segmentEnd > start) {
+            int segmentStart = segmentEnd;
+            while (segmentStart > start && bytes[segmentStart - 1] != '/') {
+                segmentStart--;
             }
-            to--;
-            if (to != from) {
-                bytes[to] = b;
+            int segmentLen = segmentEnd - segmentStart;
+            boolean dot = segmentLen == 1 && bytes[segmentStart] == '.';
+            boolean dotDot = segmentLen == 2 && bytes[segmentStart] == '.' && bytes[segmentStart + 1] == '.';
+            if (dotDot) {
+                skip++;
+            } else if (segmentLen > 0 && !dot) {
+                if (skip > 0) {
+                    skip--;
+                } else {
+                    if (to != end) {
+                        bytes[--to] = '/';
+                    }
+                    to -= segmentLen;
+                    if (to != segmentStart) {
+                        System.arraycopy(bytes, segmentStart, bytes, to, segmentLen);
+                    }
+                }
             }
+            segmentEnd = segmentStart - 1;
         }
         return to;
     }
