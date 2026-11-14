@@ -45,6 +45,7 @@ Entry data is read on demand from the underlying `RandomAccessFile`. All reads a
 | **Data descriptors** | Yes (32-bit and ZIP64) | Yes |
 | **Extended timestamps** | Unix (0x5455) and NTFS (0x000a) | Unix (0x5455) and NTFS (0x000a) |
 | **Entry name encoding** | UTF-8 only | Configurable (default UTF-8, respects EFS flag) |
+| **`.` and `..` in entry names** | Resolved, without going above the root | Archive is rejected |
 | **CRC-32 verification** | Yes | Yes |
 | **Zip bomb protection** | 256 MB entry cap, 1000:1 ratio limit | No |
 | **Encryption** | No | No |

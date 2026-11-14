@@ -223,6 +223,61 @@ class ReadOnlyZipFileSystemTest {
     }
 
     @Test
+    void walkDirectoryTreeWithDotSegmentsInEntryNames() throws IOException {
+        // Regression: a "." or ".." segment in an entry name became a child that
+        // resolved back to an ancestor directory, so Files.walk never ended.
+        // Names are canonicalized like absolute paths, so ".." segments cannot
+        // escape the root.
+        Path zip = createZip("test.zip",
+                entry("./", ""),
+                entry("dir/./", ""),
+                entry("dir/./file.txt", "f"),
+                entry("a/../b.txt", "b"),
+                entry("../../evil.txt", "e"),
+                entry("x/y/../z.txt", "z"),
+                entry("x/./y/..", ""),
+                entry("x/y/w.txt", "w"),
+                entry("p/q/r/../../s.txt", "s"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip);
+                Stream<Path> stream = Files.walk(fs.getPath("/"))) {
+            // limit() makes the test fail rather than hang if a directory is its own child
+            List<String> paths = stream.limit(100).map(Path::toString).sorted().collect(Collectors.toList());
+            assertEquals(
+                    List.of("/", "/b.txt", "/dir", "/dir/file.txt", "/evil.txt", "/p", "/p/s.txt",
+                            "/x", "/x/y", "/x/y/w.txt", "/x/z.txt"),
+                    paths);
+        }
+    }
+
+    @Test
+    void readEntriesWithDotSegmentsInNames() throws IOException {
+        Path zip = createZip("test.zip",
+                entry("dir/./", ""),
+                entry("a/./b.txt", "b"),
+                entry("a/c/../d.txt", "d"),
+                entry("e/.", ""),
+                entry("g/h/..", ""),
+                entry("..data/.hidden", "h"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertTrue(Files.isDirectory(fs.getPath("/dir")));
+            try (Stream<Path> stream = Files.list(fs.getPath("/dir"))) {
+                assertEquals(0, stream.count());
+            }
+            assertEquals("b", Files.readString(fs.getPath("/a/b.txt")));
+            assertEquals("d", Files.readString(fs.getPath("/a/d.txt")));
+            assertFalse(Files.exists(fs.getPath("/a/c")));
+            // a name ending in a "." or ".." segment denotes a directory
+            assertTrue(Files.isDirectory(fs.getPath("/e")));
+            assertTrue(Files.isDirectory(fs.getPath("/g")));
+            assertFalse(Files.exists(fs.getPath("/g/h")));
+            // segments that merely start with dots are kept as they are
+            assertEquals("h", Files.readString(fs.getPath("/..data/.hidden")));
+        }
+    }
+
+    @Test
     void listDirectory() throws IOException {
         Path zip = createZip("test.zip",
                 entry("dir/alpha.txt", "a"),
@@ -1494,15 +1549,17 @@ class ReadOnlyZipFileSystemTest {
                 entry("a/../b.txt", "b"));
 
         try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
-            // Paths with ".." segments are normalized before lookup, so entries
-            // whose raw names contain traversal sequences are not reachable
-            // via their literal path.
-            assertThrows(NoSuchFileException.class,
-                    () -> Files.readString(fs.getPath("/../../etc/passwd")));
+            // Entry names are canonicalized like absolute paths, so ".." segments
+            // cannot escape the root of the archive.
+            assertEquals("root:x:0:0", Files.readString(fs.getPath("/etc/passwd")));
+            assertEquals("root:x:0:0", Files.readString(fs.getPath("/../../etc/passwd")));
+            assertEquals("b", Files.readString(fs.getPath("/b.txt")));
+            assertFalse(Files.exists(fs.getPath("/a")));
 
-            // "a/../b.txt" normalizes to "b.txt" which doesn't exist as an entry
-            assertThrows(NoSuchFileException.class,
-                    () -> Files.readString(fs.getPath("/a/../b.txt")));
+            try (Stream<Path> stream = Files.walk(fs.getPath("/"))) {
+                List<String> paths = stream.limit(100).map(Path::toString).sorted().collect(Collectors.toList());
+                assertEquals(List.of("/", "/b.txt", "/etc", "/etc/passwd"), paths);
+            }
 
             // normalize does not escape the archive
             Path normalized = fs.getPath("/../../etc/passwd").normalize();
