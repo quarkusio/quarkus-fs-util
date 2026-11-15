@@ -1351,6 +1351,23 @@ class ReadOnlyZipFileSystemTest {
         }
     }
 
+    @Test
+    void readNonZip64ArchiveWith65535Entries() throws IOException {
+        // 65535 is the ZIP64 sentinel of the EOCD entry count, but without a
+        // ZIP64 EOCD locator it is the actual number of entries
+        int count = 0xFFFF;
+        Path zip = tempDir.resolve("65535-entries.zip");
+        Files.write(zip, buildStoredArchiveWithoutZip64(count));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("data0", Files.readString(fs.getPath("/entry0.txt")));
+            assertEquals("data65534", Files.readString(fs.getPath("/entry65534.txt")));
+            try (Stream<Path> stream = Files.list(fs.getPath("/"))) {
+                assertEquals(count, stream.count());
+            }
+        }
+    }
+
     // -- Extended timestamps --
 
     @Test
@@ -1829,6 +1846,76 @@ class ReadOnlyZipFileSystemTest {
         eocd.putShort((short) 0xFFFF); // total entries (ZIP64 sentinel)
         eocd.putInt(0xFFFFFFFF); // CD size (ZIP64 sentinel)
         eocd.putInt(0xFFFFFFFF); // CD offset (ZIP64 sentinel)
+        eocd.putShort((short) 0); // comment length
+        out.write(eocd.array());
+
+        return out.toByteArray();
+    }
+
+    /**
+     * Builds a STORED archive with entries {@code entry<i>.txt} containing
+     * {@code data<i>}, ending with a standard EOCD record only, without any
+     * ZIP64 records.
+     */
+    private static byte[] buildStoredArchiveWithoutZip64(int entryCount) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream cd = new ByteArrayOutputStream();
+        for (int i = 0; i < entryCount; i++) {
+            byte[] nameBytes = ("entry" + i + ".txt").getBytes(StandardCharsets.UTF_8);
+            byte[] data = ("data" + i).getBytes(StandardCharsets.UTF_8);
+            CRC32 crc = new CRC32();
+            crc.update(data);
+            int localHeaderOffset = out.size();
+
+            ByteBuffer local = ByteBuffer.allocate(30 + nameBytes.length).order(ByteOrder.LITTLE_ENDIAN);
+            local.putInt(LOCAL_HEADER_SIG);
+            local.putShort((short) 10); // version needed
+            local.putShort((short) 0); // general purpose bit flag
+            local.putShort((short) 0); // compression method: STORED
+            local.putShort((short) 0); // last mod file time
+            local.putShort((short) 0); // last mod file date
+            local.putInt((int) crc.getValue()); // crc-32
+            local.putInt(data.length); // compressed size
+            local.putInt(data.length); // uncompressed size
+            local.putShort((short) nameBytes.length);
+            local.putShort((short) 0); // extra field length
+            local.put(nameBytes);
+            out.write(local.array());
+            out.write(data);
+
+            ByteBuffer header = ByteBuffer.allocate(46 + nameBytes.length).order(ByteOrder.LITTLE_ENDIAN);
+            header.putInt(CENTRAL_DIR_SIG);
+            header.putShort((short) 10); // version made by
+            header.putShort((short) 10); // version needed
+            header.putShort((short) 0); // general purpose bit flag
+            header.putShort((short) 0); // compression method: STORED
+            header.putShort((short) 0); // last mod file time
+            header.putShort((short) 0); // last mod file date
+            header.putInt((int) crc.getValue()); // crc-32
+            header.putInt(data.length); // compressed size
+            header.putInt(data.length); // uncompressed size
+            header.putShort((short) nameBytes.length);
+            header.putShort((short) 0); // extra field length
+            header.putShort((short) 0); // file comment length
+            header.putShort((short) 0); // disk number start
+            header.putShort((short) 0); // internal file attributes
+            header.putInt(0); // external file attributes
+            header.putInt(localHeaderOffset);
+            header.put(nameBytes);
+            cd.write(header.array());
+        }
+
+        int cdOffset = out.size();
+        out.write(cd.toByteArray());
+
+        ByteBuffer eocd = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN);
+        eocd.putInt(EOCD_SIG);
+        eocd.putShort((short) 0); // this disk number
+        eocd.putShort((short) 0); // disk with CD start
+        eocd.putShort((short) entryCount); // entries on this disk
+        eocd.putShort((short) entryCount); // total entries
+        eocd.putInt(cd.size()); // CD size
+        eocd.putInt(cdOffset); // CD offset
         eocd.putShort((short) 0); // comment length
         out.write(eocd.array());
 
