@@ -205,7 +205,8 @@ public class ReadOnlyZipFileSystem extends FileSystem {
 
     /**
      * Creates a {@link ReadOnlyZipPath} by joining the given strings with
-     * the {@code "/"} separator.
+     * the {@code "/"} separator. The result is normalized with
+     * {@link #normalizePath(String)}.
      *
      * @param first the first component
      * @param more additional components to join
@@ -215,7 +216,7 @@ public class ReadOnlyZipFileSystem extends FileSystem {
     public Path getPath(String first, String... more) {
         ensureOpen();
         if (more.length == 0) {
-            return new ReadOnlyZipPath(this, first);
+            return new ReadOnlyZipPath(this, normalizePath(first));
         }
         StringBuilder sb = new StringBuilder(first);
         for (String s : more) {
@@ -224,7 +225,36 @@ public class ReadOnlyZipFileSystem extends FileSystem {
             }
             sb.append(s);
         }
-        return new ReadOnlyZipPath(this, sb.toString());
+        return new ReadOnlyZipPath(this, normalizePath(sb.toString()));
+    }
+
+    /**
+     * Collapses each run of {@code '/'} into a single one and strips a
+     * trailing {@code '/'}, except from the root {@code "/"}, like the JDK ZIP
+     * file system does. For example, {@code "/a//b/"} becomes {@code "/a/b"}.
+     * The {@code "."} and {@code ".."} segments are left as they are; they are
+     * resolved by {@link Path#normalize()}.
+     *
+     * @param path the path string
+     * @return the normalized path string, or {@code path} itself if it is
+     *         already normalized
+     */
+    static String normalizePath(String path) {
+        int len = path.length();
+        if (path.indexOf("//") < 0 && (len <= 1 || path.charAt(len - 1) != '/')) {
+            return path;
+        }
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            char c = path.charAt(i);
+            if (c != '/' || sb.isEmpty() || sb.charAt(sb.length() - 1) != '/') {
+                sb.append(c);
+            }
+        }
+        if (sb.length() > 1 && sb.charAt(sb.length() - 1) == '/') {
+            sb.setLength(sb.length() - 1);
+        }
+        return sb.toString();
     }
 
     /**

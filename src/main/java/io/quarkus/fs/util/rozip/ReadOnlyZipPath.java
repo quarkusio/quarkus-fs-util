@@ -19,7 +19,9 @@ import java.util.Objects;
  * <p>
  * All operations are pure string manipulation using {@code "/"} as the
  * separator. Absolute paths start with {@code "/"}, relative paths do not.
- * The root directory is represented by {@code "/"}.
+ * The root directory is represented by {@code "/"}. Path strings never
+ * contain empty name elements or a trailing {@code "/"}; see
+ * {@link ReadOnlyZipFileSystem#normalizePath(String)}.
  * <p>
  * Instances are created by {@link ReadOnlyZipFileSystem#getPath(String, String...)}.
  */
@@ -72,14 +74,8 @@ class ReadOnlyZipPath implements Path {
         if (lastSlash == -1) {
             return this;
         }
-        final int length = path.length();
-        if (lastSlash == 0) {
-            return length == 1 ? null : new ReadOnlyZipPath(fileSystem, path.substring(1));
-        }
-        if (lastSlash == length - 1) {
-            lastSlash = path.lastIndexOf('/', lastSlash - 1);
-            return lastSlash == -1 ? new ReadOnlyZipPath(fileSystem, path.substring(0, length - 1))
-                    : new ReadOnlyZipPath(fileSystem, path.substring(lastSlash + 1, length - 1));
+        if (path.equals("/")) {
+            return null;
         }
         return new ReadOnlyZipPath(fileSystem, path.substring(lastSlash + 1));
     }
@@ -89,11 +85,7 @@ class ReadOnlyZipPath implements Path {
         if (path.isEmpty() || path.equals("/")) {
             return null;
         }
-        int end = path.length();
-        if (path.charAt(end - 1) == '/') {
-            end--;
-        }
-        int lastSlash = path.lastIndexOf('/', end - 1);
+        int lastSlash = path.lastIndexOf('/');
         if (lastSlash < 0) {
             return null;
         }
@@ -445,9 +437,6 @@ class ReadOnlyZipPath implements Path {
      */
     private int[] computeOffsets() {
         int len = path.length();
-        if (len > 1 && path.charAt(len - 1) == '/') {
-            len--;
-        }
         if (len == 0 || (len == 1 && path.charAt(0) == '/')) {
             return new int[0];
         }
@@ -469,11 +458,6 @@ class ReadOnlyZipPath implements Path {
         return offs;
     }
 
-    private int pathLengthWithoutTrailingSlash() {
-        int len = path.length();
-        return (len > 1 && path.charAt(len - 1) == '/') ? len - 1 : len;
-    }
-
     /**
      * Returns the name component at the given index using precomputed offsets.
      */
@@ -492,7 +476,7 @@ class ReadOnlyZipPath implements Path {
      * @return the end index (exclusive) of the component at {@code index}
      */
     private int componentEnd(int[] offs, int index) {
-        return (index + 1 < offs.length) ? offs[index + 1] - 1 : pathLengthWithoutTrailingSlash();
+        return (index + 1 < offs.length) ? offs[index + 1] - 1 : path.length();
     }
 
     /**

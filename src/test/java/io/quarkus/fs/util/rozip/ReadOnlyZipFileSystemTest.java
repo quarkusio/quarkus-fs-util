@@ -352,6 +352,38 @@ class ReadOnlyZipFileSystemTest {
     }
 
     @Test
+    void getPathCollapsesRedundantSlashes() throws IOException {
+        Path zip = createZip("test.zip", entry("x.txt", "x"));
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("/a/b", fs.getPath("/a//b/").toString());
+            assertEquals("/a", fs.getPath("//a").toString());
+            assertEquals("a/b", fs.getPath("a/", "/b/").toString());
+            assertEquals("/", fs.getPath("//").toString());
+            assertEquals(fs.getPath("/a/b"), fs.getPath("/a///b//"));
+            assertEquals(2, fs.getPath("/a//b").getNameCount());
+            assertEquals(1, fs.getPath("//a").getNameCount());
+            assertEquals("/a", fs.getPath("/a//b").getParent().toString());
+            assertEquals("b", fs.getPath("/a/b/").getFileName().toString());
+            assertTrue(fs.getPath("/a/b").startsWith("/a/"));
+            assertTrue(fs.getPath("/a/b").endsWith("a//b"));
+        }
+    }
+
+    @Test
+    void entriesAreFoundThroughPathsWithRedundantSlashes() throws IOException {
+        Path zip = createZip("test.zip", entry("dir/a.txt", "alpha"));
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("alpha", Files.readString(fs.getPath("/dir//a.txt")));
+            assertEquals("alpha", Files.readString(fs.getPath("dir//a.txt")));
+            assertTrue(Files.isRegularFile(fs.getPath("//dir/a.txt")));
+            assertTrue(Files.isDirectory(fs.getPath("/dir//")));
+            try (Stream<Path> stream = Files.list(fs.getPath("/dir//"))) {
+                assertEquals(List.of("/dir/a.txt"), stream.map(Path::toString).toList());
+            }
+        }
+    }
+
+    @Test
     void resolveAndRelativize() throws IOException {
         Path zip = createZip("test.zip", entry("x.txt", "x"));
         try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
@@ -377,6 +409,7 @@ class ReadOnlyZipFileSystemTest {
             assertNull(fs.getPath("/").getParent());
 
             Path dirWithSlash = fs.getPath("/dir/");
+            assertEquals("/dir", dirWithSlash.toString());
             assertEquals("/", dirWithSlash.getParent().toString());
             assertEquals("dir", dirWithSlash.getFileName().toString());
         }
