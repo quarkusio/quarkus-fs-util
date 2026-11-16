@@ -223,6 +223,30 @@ class ReadOnlyZipFileSystemTest {
     }
 
     @Test
+    void entryNamesWithDotSegmentsAreRejected() throws IOException {
+        // A "." or ".." segment is a path traversal attempt and, as a child name,
+        // would resolve to an ancestor directory and make Files.walk never end.
+        for (String name : List.of("./", "dir/./file.txt", "a/../b.txt", "../../etc/passwd", "e/.", "g/h/..", "..")) {
+            Path zip = createZip("test.zip", entry(name, "x"));
+            assertThrows(IOException.class, () -> ReadOnlyZipFileSystem.open(zip), name);
+        }
+    }
+
+    @Test
+    void entryNamesWithDotsInsideSegmentsAreKept() throws IOException {
+        Path zip = createZip("test.zip",
+                entry("..data/.hidden", "h"),
+                entry("a/b..c/d.", "d"),
+                entry("...", "t"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("h", Files.readString(fs.getPath("/..data/.hidden")));
+            assertEquals("d", Files.readString(fs.getPath("/a/b..c/d.")));
+            assertEquals("t", Files.readString(fs.getPath("/...")));
+        }
+    }
+
+    @Test
     void listDirectory() throws IOException {
         Path zip = createZip("test.zip",
                 entry("dir/alpha.txt", "a"),
@@ -1538,27 +1562,12 @@ class ReadOnlyZipFileSystemTest {
     // -- Path traversal --
 
     @Test
-    void pathTraversalEntryIsContained() throws IOException {
+    void pathTraversalEntryIsRejected() throws IOException {
         Path zip = createZip("traversal.zip",
                 entry("../../etc/passwd", "root:x:0:0"),
                 entry("a/../b.txt", "b"));
 
-        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
-            // Paths with ".." segments are normalized before lookup, so entries
-            // whose raw names contain traversal sequences are not reachable
-            // via their literal path.
-            assertThrows(NoSuchFileException.class,
-                    () -> Files.readString(fs.getPath("/../../etc/passwd")));
-
-            // "a/../b.txt" normalizes to "b.txt" which doesn't exist as an entry
-            assertThrows(NoSuchFileException.class,
-                    () -> Files.readString(fs.getPath("/a/../b.txt")));
-
-            // normalize does not escape the archive
-            Path normalized = fs.getPath("/../../etc/passwd").normalize();
-            assertTrue(normalized.toString().startsWith("/"),
-                    "Normalized path should stay within the archive: " + normalized);
-        }
+        assertThrows(IOException.class, () -> ReadOnlyZipFileSystem.open(zip));
     }
 
     // -- Mixed compression methods --

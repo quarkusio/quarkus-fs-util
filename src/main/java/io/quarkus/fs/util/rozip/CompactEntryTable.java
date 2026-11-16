@@ -167,6 +167,12 @@ final class CompactEntryTable {
             int nameEnd = nameStart + nameLen;
             nameStart = collapseSlashes(cdBytes, nameStart, nameEnd);
             nameLen = nameEnd - nameStart;
+            if (hasDotSegment(cdBytes, nameStart, nameEnd)) {
+                // Like the JDK ZIP file system, reject the archive. Such a name is a
+                // path traversal attempt, and a child named "." or ".." would resolve
+                // to a directory above it and make walks never end.
+                throw new IOException("Entry name has a '.' or '..' element at offset " + (cdOffset + pos));
+            }
             if (nameLen == 0) {
                 // The entry denotes the root directory, which always exists.
                 pos += entrySize;
@@ -206,6 +212,30 @@ final class CompactEntryTable {
         return sortAndBuildFromCd(actualCount, cdBytes, nameStarts, nameLens,
                 tmpLocalHeaderOffsets, tmpCompressedSizes, tmpUncompressedSizes,
                 tmpCrc32Values, tmpLastModifiedTimes, tmpCompressionMethods, tmpDirectories);
+    }
+
+    /**
+     * Returns {@code true} if any {@code '/'}-separated segment of the name stored
+     * at {@code bytes[start, end)} is {@code "."} or {@code ".."}.
+     *
+     * @param bytes the array holding the name
+     * @param start the start offset of the name
+     * @param end the end offset of the name (exclusive)
+     * @return {@code true} if the name has a {@code "."} or {@code ".."} segment
+     */
+    private static boolean hasDotSegment(byte[] bytes, int start, int end) {
+        int segmentStart = start;
+        for (int i = start; i <= end; i++) {
+            if (i == end || bytes[i] == '/') {
+                int len = i - segmentStart;
+                if ((len == 1 || len == 2) && bytes[segmentStart] == '.'
+                        && (len == 1 || bytes[segmentStart + 1] == '.')) {
+                    return true;
+                }
+                segmentStart = i + 1;
+            }
+        }
+        return false;
     }
 
     /**
