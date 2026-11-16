@@ -88,6 +88,11 @@ final class ZipCentralDirectory {
     /**
      * Locates the End of Central Directory record and extracts the central
      * directory offset, size, and total entry count. Handles ZIP64 if needed.
+     * <p>
+     * If a field holds its ZIP64 sentinel value but the archive has no ZIP64
+     * End of Central Directory locator, the value is taken as it is, like the
+     * JDK does. This is the case for a non-ZIP64 archive with exactly 65535
+     * entries.
      *
      * @return array of {@code [cdOffset, cdSize, totalEntries]}
      */
@@ -109,7 +114,10 @@ final class ZipCentralDirectory {
         long cdOffset = LittleEndian.readUint32(buf, eocdPos + 16);
 
         if (needsZip64(totalEntries, cdSize, cdOffset)) {
-            return readZip64Eocd(raf, searchStart + eocdPos);
+            long[] zip64Info = readZip64Eocd(raf, searchStart + eocdPos);
+            if (zip64Info != null) {
+                return zip64Info;
+            }
         }
 
         return new long[] { cdOffset, cdSize, totalEntries };
@@ -142,12 +150,14 @@ final class ZipCentralDirectory {
      *
      * @param raf the archive file
      * @param eocdOffset absolute file offset of the standard EOCD record
-     * @return array of {@code [cdOffset, cdSize, totalEntries]}
+     * @return array of {@code [cdOffset, cdSize, totalEntries]}, or {@code null}
+     *         if there is no ZIP64 EOCD locator in front of the standard EOCD
+     *         record
      */
     private static long[] readZip64Eocd(RandomAccessFile raf, long eocdOffset) throws IOException {
         long locatorOffset = eocdOffset - 20;
         if (locatorOffset < 0) {
-            throw new IOException("ZIP64 EOCD locator not found");
+            return null;
         }
 
         byte[] locator = new byte[20];
@@ -155,7 +165,7 @@ final class ZipCentralDirectory {
         raf.readFully(locator);
 
         if (LittleEndian.readInt32(locator, 0) != ZIP64_EOCD_LOCATOR_SIG) {
-            throw new IOException("ZIP64 EOCD locator signature mismatch");
+            return null;
         }
 
         long zip64EocdOffset = LittleEndian.readUint64(locator, 8);

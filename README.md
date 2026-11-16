@@ -64,8 +64,6 @@ Entry data is read on demand from the underlying `RandomAccessFile`. All reads a
 
 - **No nested archive support.** Reading a ZIP-in-ZIP (e.g. a JAR inside an uber-JAR) requires extracting the inner bytes with `Files.readAllBytes()` and opening separately. This matches the JDK behavior. Quarkus handles nested JARs at a higher level and does not rely on filesystem-level nesting.
 
-- **65535-entry edge case.** A non-ZIP64 archive with exactly 65535 entries is misidentified as ZIP64, causing an `IOException` if no ZIP64 end-of-central-directory record is present. In practice, most tools emit ZIP64 structures at that entry count, and Quarkus JARs are well below this threshold.
-
 - **No ServiceLoader discovery.** The filesystem provider is not registered via `META-INF/services` and cannot be used with `FileSystems.newFileSystem(URI, ...)`. Access is through `ZipUtils.openReadOnly()` or `ReadOnlyZipFileSystem.open()`. This is intentional — Quarkus controls all call sites and does not need URI-based discovery.
 
 ## Release
