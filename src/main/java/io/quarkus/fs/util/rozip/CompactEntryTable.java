@@ -105,11 +105,14 @@ final class CompactEntryTable {
      * @param cdSize the number of valid bytes in {@code cdBytes}
      * @param totalEntries the declared number of entries
      * @param cdOffset the absolute file offset of the central directory (for error messages)
+     * @param prefixLength the number of bytes prepended to the archive, such as the
+     *        launcher script of an executable JAR, which is added to every local header
+     *        offset recorded in the central directory
      * @return a new compact entry table
      * @throws IOException if the central directory is malformed
      */
     static CompactEntryTable buildFromCentralDirectory(byte[] cdBytes, int cdSize,
-            long totalEntries, long cdOffset) throws IOException {
+            long totalEntries, long cdOffset, long prefixLength) throws IOException {
         int count = (int) Math.min(totalEntries, Integer.MAX_VALUE);
         if (count == 0) {
             return empty();
@@ -195,7 +198,7 @@ final class CompactEntryTable {
                     extraOffset, extraLen,
                     ZipCentralDirectory.dosToEpochMillis(dosDate, dosTime));
 
-            tmpLocalHeaderOffsets[actualCount] = localHeaderOffset;
+            tmpLocalHeaderOffsets[actualCount] = localHeaderOffset + prefixLength;
             tmpCompressedSizes[actualCount] = compressedSize;
             tmpUncompressedSizes[actualCount] = uncompressedSize;
             tmpCrc32Values[actualCount] = (int) crc32;

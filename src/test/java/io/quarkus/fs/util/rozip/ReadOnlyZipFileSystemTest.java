@@ -1425,6 +1425,100 @@ class ReadOnlyZipFileSystemTest {
         }
     }
 
+    @Test
+    void readZip64ArchiveWithoutSentinelValues() throws IOException {
+        // Some writers add the ZIP64 records although the EOCD record holds the
+        // actual values. The central directory then ends where the ZIP64 EOCD
+        // record starts, not where the EOCD record starts.
+        byte[] content = "zip64 content".getBytes(StandardCharsets.UTF_8);
+        byte[] raw = buildZip64Archive("hello.txt", content);
+        int eocd = findEocdOffset(raw);
+        int zip64Eocd = eocd - 20 - 56;
+        writeLeUint16(raw, eocd + 8, LittleEndian.readUint64(raw, zip64Eocd + 24));
+        writeLeUint16(raw, eocd + 10, LittleEndian.readUint64(raw, zip64Eocd + 32));
+        writeLeUint32(raw, eocd + 12, LittleEndian.readUint64(raw, zip64Eocd + 40));
+        writeLeUint32(raw, eocd + 16, LittleEndian.readUint64(raw, zip64Eocd + 48));
+        Path zip = tempDir.resolve("zip64-without-sentinels.zip");
+        Files.write(zip, raw);
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("zip64 content", Files.readString(fs.getPath("/hello.txt")));
+        }
+    }
+
+    // -- Prepended data --
+
+    private static final byte[] LAUNCHER_SCRIPT = "#!/bin/sh\nexec java -jar \"$0\" \"$@\"\n"
+            .getBytes(StandardCharsets.UTF_8);
+
+    @Test
+    void readArchiveWithPrependedData() throws IOException {
+        // An executable JAR starts with a launcher script. The offsets recorded
+        // in the archive don't account for it, but the JDK reads it anyway.
+        Path executable = tempDir.resolve("app");
+        Files.write(executable, prepend(LAUNCHER_SCRIPT, Files.readAllBytes(createAppJar())));
+
+        assertPrependedArchiveReadable(executable);
+    }
+
+    @Test
+    void readArchiveWithPrependedDataAndAdjustedOffsets() throws IOException {
+        // Tools such as "zip -A" add the length of the prepended data to the
+        // offsets recorded in the archive
+        byte[] raw = prepend(LAUNCHER_SCRIPT, Files.readAllBytes(createAppJar()));
+        adjustOffsetsForPrefix(raw, LAUNCHER_SCRIPT.length);
+        Path executable = tempDir.resolve("app");
+        Files.write(executable, raw);
+
+        assertPrependedArchiveReadable(executable);
+    }
+
+    private Path createAppJar() throws IOException {
+        return createZipMixedMethods("app.jar",
+                storedEntry("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n"),
+                deflatedEntry("com/example/App.class", "app class"),
+                storedEntry("config/app.properties", "key=value"));
+    }
+
+    private static void assertPrependedArchiveReadable(Path executable) throws IOException {
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(executable)) {
+            assertEquals("Manifest-Version: 1.0\n", Files.readString(fs.getPath("/META-INF/MANIFEST.MF")));
+            assertEquals("app class", Files.readString(fs.getPath("/com/example/App.class")));
+            assertEquals("key=value", Files.readString(fs.getPath("/config/app.properties")));
+            try (Stream<Path> stream = Files.walk(fs.getPath("/"))) {
+                assertEquals(List.of("/", "/META-INF", "/META-INF/MANIFEST.MF", "/com", "/com/example",
+                        "/com/example/App.class", "/config", "/config/app.properties"),
+                        stream.map(Path::toString).sorted().collect(Collectors.toList()));
+            }
+        }
+    }
+
+    @Test
+    void centralDirectoryOffsetPastActualPositionRejected() throws IOException {
+        Path zip = createZip("test.zip", entry("hello.txt", "hello"));
+        byte[] raw = Files.readAllBytes(zip);
+        int eocd = findEocdOffset(raw);
+        writeLeUint32(raw, eocd + 16, LittleEndian.readUint32(raw, eocd + 16) + 1);
+        Path patched = tempDir.resolve("bad-cd-offset.zip");
+        Files.write(patched, raw);
+
+        IOException ex = assertThrows(IOException.class, () -> ReadOnlyZipFileSystem.open(patched));
+        assertTrue(ex.getMessage().contains("central directory offset"), ex.getMessage());
+    }
+
+    @Test
+    void centralDirectorySizePastEocdRecordRejected() throws IOException {
+        Path zip = createZip("test.zip", entry("hello.txt", "hello"));
+        byte[] raw = Files.readAllBytes(zip);
+        int eocd = findEocdOffset(raw);
+        writeLeUint32(raw, eocd + 12, eocd + 1);
+        Path patched = tempDir.resolve("bad-cd-size.zip");
+        Files.write(patched, raw);
+
+        IOException ex = assertThrows(IOException.class, () -> ReadOnlyZipFileSystem.open(patched));
+        assertTrue(ex.getMessage().contains("central directory size"), ex.getMessage());
+    }
+
     // -- Extended timestamps --
 
     @Test
@@ -1746,13 +1840,43 @@ class ReadOnlyZipFileSystemTest {
     private static final int ZIP64_EOCD_SIG = 0x06064b50;
     private static final int ZIP64_EOCD_LOCATOR_SIG = 0x07064b50;
 
-    private static int findCentralDirectoryOffset(byte[] zip) {
+    private static int findEocdOffset(byte[] zip) {
         for (int i = zip.length - 22; i >= 0; i--) {
             if (LittleEndian.readInt32(zip, i) == EOCD_SIG) {
-                return (int) LittleEndian.readUint32(zip, i + 16);
+                return i;
             }
         }
         throw new IllegalStateException("EOCD not found");
+    }
+
+    private static int findCentralDirectoryOffset(byte[] zip) {
+        return (int) LittleEndian.readUint32(zip, findEocdOffset(zip) + 16);
+    }
+
+    private static byte[] prepend(byte[] prefix, byte[] zip) {
+        byte[] result = Arrays.copyOf(prefix, prefix.length + zip.length);
+        System.arraycopy(zip, 0, result, prefix.length, zip.length);
+        return result;
+    }
+
+    /**
+     * Adds {@code prefixLength} to the central directory offset and to the
+     * local header offset of every entry of a non-ZIP64 archive, which starts
+     * with {@code prefixLength} bytes of prepended data.
+     */
+    private static void adjustOffsetsForPrefix(byte[] zip, int prefixLength) {
+        int eocd = findEocdOffset(zip);
+        int entryCount = LittleEndian.readUint16(zip, eocd + 10);
+        int pos = findCentralDirectoryOffset(zip) + prefixLength;
+        for (int i = 0; i < entryCount; i++) {
+            if (LittleEndian.readInt32(zip, pos) != CENTRAL_DIR_SIG) {
+                throw new IllegalStateException("Not a central directory entry at offset " + pos);
+            }
+            writeLeUint32(zip, pos + 42, LittleEndian.readUint32(zip, pos + 42) + prefixLength);
+            pos += 46 + LittleEndian.readUint16(zip, pos + 28) + LittleEndian.readUint16(zip, pos + 30)
+                    + LittleEndian.readUint16(zip, pos + 32);
+        }
+        writeLeUint32(zip, eocd + 16, LittleEndian.readUint32(zip, eocd + 16) + prefixLength);
     }
 
     private static void patchCentralDirectoryUncompressedSize(byte[] zip, long newSize) {
@@ -1781,6 +1905,11 @@ class ReadOnlyZipFileSystemTest {
     private static long findCentralDirectoryCompressedSize(byte[] zip) {
         int cdOff = findCentralDirectoryOffset(zip);
         return LittleEndian.readUint32(zip, cdOff + 20);
+    }
+
+    private static void writeLeUint16(byte[] buf, int off, long value) {
+        buf[off] = (byte) (value & 0xFF);
+        buf[off + 1] = (byte) ((value >> 8) & 0xFF);
     }
 
     private static void writeLeUint32(byte[] buf, int off, long value) {
