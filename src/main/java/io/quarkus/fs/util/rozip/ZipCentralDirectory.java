@@ -31,6 +31,8 @@ final class ZipCentralDirectory {
     // EOCD sizes
     private static final int EOCD_MIN_SIZE = 22;
     private static final int EOCD_MAX_COMMENT = 65535;
+    private static final int ZIP64_EOCD_SIZE = 56;
+    private static final int ZIP64_EOCD_LOCATOR_SIZE = 20;
 
     // Extra field tags
     private static final int ZIP64_EXTRA_TAG = 0x0001;
@@ -67,17 +69,32 @@ final class ZipCentralDirectory {
         long cdOffset = eocdInfo[0];
         long cdSize = eocdInfo[1];
         long totalEntries = eocdInfo[2];
+        long cdEnd = eocdInfo[3];
 
         if (cdSize > MAX_CENTRAL_DIR_SIZE) {
             throw new IOException("Central directory too large (" + cdSize
                     + " bytes, limit " + MAX_CENTRAL_DIR_SIZE + ")");
         }
+        if (cdSize > cdEnd) {
+            throw new IOException("Invalid End of Central Directory record (central directory size "
+                    + cdSize + " exceeds its end offset " + cdEnd + ")");
+        }
+        // The central directory ends where the (ZIP64) EOCD record starts. Like the
+        // JDK, locate it from there rather than from its recorded offset: data
+        // prepended to the archive, such as the launcher script of an executable
+        // JAR, shifts every offset that the archive records by its length.
+        long cdStart = cdEnd - cdSize;
+        long prefixLength = cdStart - cdOffset;
+        if (prefixLength < 0) {
+            throw new IOException("Invalid End of Central Directory record (central directory offset "
+                    + cdOffset + " is past its actual position " + cdStart + ")");
+        }
         byte[] cdBytes = new byte[(int) cdSize];
-        raf.seek(cdOffset);
+        raf.seek(cdStart);
         raf.readFully(cdBytes);
 
         CompactEntryTable table = CompactEntryTable.buildFromCentralDirectory(
-                cdBytes, (int) cdSize, totalEntries, cdOffset);
+                cdBytes, (int) cdSize, totalEntries, cdStart, prefixLength);
         return new ZipCentralDirectory(table);
     }
 
@@ -89,12 +106,17 @@ final class ZipCentralDirectory {
      * Locates the End of Central Directory record and extracts the central
      * directory offset, size, and total entry count. Handles ZIP64 if needed.
      * <p>
-     * If a field holds its ZIP64 sentinel value but the archive has no ZIP64
-     * End of Central Directory locator, the value is taken as it is, like the
-     * JDK does. This is the case for a non-ZIP64 archive with exactly 65535
-     * entries.
+     * Like the JDK, the ZIP64 End of Central Directory record is used whenever
+     * a ZIP64 locator precedes the EOCD record, even if no EOCD field holds its
+     * ZIP64 sentinel value, since the central directory then ends where the
+     * ZIP64 record starts. If a field holds its sentinel value but the archive
+     * has no ZIP64 locator, the value is taken as it is. This is the case for
+     * a non-ZIP64 archive with exactly 65535 entries.
      *
-     * @return array of {@code [cdOffset, cdSize, totalEntries]}
+     * @return array of {@code [cdOffset, cdSize, totalEntries, cdEnd]}, where
+     *         {@code cdEnd} is the absolute file offset of the record that
+     *         follows the central directory: the ZIP64 EOCD record if used,
+     *         the EOCD record otherwise
      */
     private static long[] findEocd(RandomAccessFile raf, long fileLength) throws IOException {
         int searchLen = (int) Math.min(fileLength, EOCD_MIN_SIZE + EOCD_MAX_COMMENT);
@@ -113,14 +135,13 @@ final class ZipCentralDirectory {
         long cdSize = LittleEndian.readUint32(buf, eocdPos + 12);
         long cdOffset = LittleEndian.readUint32(buf, eocdPos + 16);
 
-        if (needsZip64(totalEntries, cdSize, cdOffset)) {
-            long[] zip64Info = readZip64Eocd(raf, searchStart + eocdPos);
-            if (zip64Info != null) {
-                return zip64Info;
-            }
+        long eocdOffset = searchStart + eocdPos;
+        long[] zip64Info = readZip64Eocd(raf, eocdOffset, needsZip64(totalEntries, cdSize, cdOffset));
+        if (zip64Info != null) {
+            return zip64Info;
         }
 
-        return new long[] { cdOffset, cdSize, totalEntries };
+        return new long[] { cdOffset, cdSize, totalEntries, eocdOffset };
     }
 
     /**
@@ -150,17 +171,20 @@ final class ZipCentralDirectory {
      *
      * @param raf the archive file
      * @param eocdOffset absolute file offset of the standard EOCD record
-     * @return array of {@code [cdOffset, cdSize, totalEntries]}, or {@code null}
-     *         if there is no ZIP64 EOCD locator in front of the standard EOCD
-     *         record
+     * @param required {@code true} if an EOCD field holds its ZIP64 sentinel
+     *        value, so that a ZIP64 locator pointing to an invalid ZIP64 EOCD
+     *        record is an error; otherwise such a locator is ignored
+     * @return array of {@code [cdOffset, cdSize, totalEntries, zip64EocdOffset]},
+     *         or {@code null} if there is no ZIP64 EOCD locator in front of the
+     *         standard EOCD record, or if it is ignored
      */
-    private static long[] readZip64Eocd(RandomAccessFile raf, long eocdOffset) throws IOException {
-        long locatorOffset = eocdOffset - 20;
+    private static long[] readZip64Eocd(RandomAccessFile raf, long eocdOffset, boolean required) throws IOException {
+        long locatorOffset = eocdOffset - ZIP64_EOCD_LOCATOR_SIZE;
         if (locatorOffset < 0) {
             return null;
         }
 
-        byte[] locator = new byte[20];
+        byte[] locator = new byte[ZIP64_EOCD_LOCATOR_SIZE];
         raf.seek(locatorOffset);
         raf.readFully(locator);
 
@@ -170,19 +194,24 @@ final class ZipCentralDirectory {
 
         long zip64EocdOffset = LittleEndian.readUint64(locator, 8);
 
-        byte[] eocd64 = new byte[56];
-        raf.seek(zip64EocdOffset);
-        raf.readFully(eocd64);
+        // the record must lie in front of its locator
+        if (zip64EocdOffset >= 0 && zip64EocdOffset <= locatorOffset - ZIP64_EOCD_SIZE) {
+            byte[] eocd64 = new byte[ZIP64_EOCD_SIZE];
+            raf.seek(zip64EocdOffset);
+            raf.readFully(eocd64);
 
-        if (LittleEndian.readInt32(eocd64, 0) != ZIP64_EOCD_SIG) {
-            throw new IOException("ZIP64 EOCD signature mismatch");
+            if (LittleEndian.readInt32(eocd64, 0) == ZIP64_EOCD_SIG) {
+                long totalEntries = LittleEndian.readUint64(eocd64, 32);
+                long cdSize = LittleEndian.readUint64(eocd64, 40);
+                long cdOffset = LittleEndian.readUint64(eocd64, 48);
+                return new long[] { cdOffset, cdSize, totalEntries, zip64EocdOffset };
+            }
         }
 
-        long totalEntries = LittleEndian.readUint64(eocd64, 32);
-        long cdSize = LittleEndian.readUint64(eocd64, 40);
-        long cdOffset = LittleEndian.readUint64(eocd64, 48);
-
-        return new long[] { cdOffset, cdSize, totalEntries };
+        if (required) {
+            throw new IOException("ZIP64 EOCD signature mismatch");
+        }
+        return null;
     }
 
     /**

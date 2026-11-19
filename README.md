@@ -43,6 +43,7 @@ Entry data is read on demand from the underlying `RandomAccessFile`. All reads a
 | **Compression methods** | STORED, DEFLATED | STORED, DEFLATED |
 | **ZIP64** | Yes (entries capped at 256 MB) | Yes (no entry size cap) |
 | **Data descriptors** | Yes (32-bit and ZIP64) | Yes |
+| **Prepended data** | Yes (e.g. the launcher script of an executable JAR) | Yes |
 | **Extended timestamps** | Unix (0x5455) and NTFS (0x000a) | Unix (0x5455) and NTFS (0x000a) |
 | **Entry name encoding** | UTF-8 only | Configurable (default UTF-8, respects EFS flag) |
 | **`.` and `..` in entry names** | Archive is rejected | Archive is rejected |
