@@ -145,6 +145,9 @@ class ReadOnlyZipFileSystemProvider extends FileSystemProvider {
     /**
      * Returns a {@link DirectoryStream} that iterates over the immediate
      * children of the given directory entry.
+     * <p>
+     * Each child path is obtained by resolving the child's name against
+     * {@code dir}, so the children of a relative directory are relative too.
      *
      * @param dir the directory path
      * @param filter the filter to apply to each child
@@ -166,7 +169,6 @@ class ReadOnlyZipFileSystemProvider extends FileSystemProvider {
             throw new IOException("Not a directory: " + dir);
         }
 
-        Path parent = ((ReadOnlyZipPath) dir).toAbsolutePath();
         return new DirectoryStream<>() {
             private volatile boolean open = true;
             private final AtomicBoolean iteratorReturned = new AtomicBoolean();
@@ -179,7 +181,7 @@ class ReadOnlyZipFileSystemProvider extends FileSystemProvider {
                 if (!iteratorReturned.compareAndSet(false, true)) {
                     throw new IllegalStateException("Iterator already obtained");
                 }
-                return new FilteredChildIterator(parent, children, filter, fs);
+                return new FilteredChildIterator(dir, children, filter, fs);
             }
 
             @Override
@@ -442,7 +444,7 @@ class ReadOnlyZipFileSystemProvider extends FileSystemProvider {
 
     /**
      * An iterator over directory children that applies a filter and produces
-     * absolute {@link ReadOnlyZipPath} instances.
+     * {@link ReadOnlyZipPath} instances resolved against the directory.
      */
     private static class FilteredChildIterator implements Iterator<Path> {
 
