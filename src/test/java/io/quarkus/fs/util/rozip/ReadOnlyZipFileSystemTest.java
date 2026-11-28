@@ -1511,6 +1511,29 @@ class ReadOnlyZipFileSystemTest {
         }
     }
 
+    @Test
+    void toRealPathOfDirectories() throws IOException {
+        Path zip = createZip("test.zip",
+                entry("explicit/", ""),
+                entry("implicit/file.txt", "x"));
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertEquals("/explicit", fs.getPath("explicit/").toRealPath().toString());
+            assertEquals("/implicit", fs.getPath("/implicit/../implicit").toRealPath().toString());
+            assertEquals("/", fs.getPath("").toRealPath().toString());
+            assertEquals("/", fs.getPath("/").toRealPath().toString());
+        }
+    }
+
+    @Test
+    void toRealPathOfMissingEntryThrows() throws IOException {
+        Path zip = createZip("test.zip", entry("a/b.txt", "x"));
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            assertThrows(NoSuchFileException.class, () -> fs.getPath("/missing.txt").toRealPath());
+            assertThrows(NoSuchFileException.class, () -> fs.getPath("a/c.txt").toRealPath());
+            assertThrows(NoSuchFileException.class, () -> fs.getPath("/a/b.txt/../c.txt").toRealPath());
+        }
+    }
+
     // -- Lookup with unnormalized paths --
 
     @Test

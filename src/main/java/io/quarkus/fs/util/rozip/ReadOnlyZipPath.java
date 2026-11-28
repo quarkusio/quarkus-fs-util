@@ -336,9 +336,17 @@ class ReadOnlyZipPath implements Path {
         return new ReadOnlyZipPath(fileSystem, "/" + path);
     }
 
+    /**
+     * Returns the absolute, normalized form of this path. ZIP archives have
+     * no symbolic links, so {@code options} are ignored.
+     *
+     * @throws java.nio.file.NoSuchFileException if no entry exists at this path
+     */
     @Override
     public Path toRealPath(LinkOption... options) throws IOException {
-        return toAbsolutePath().normalize();
+        Path realPath = toAbsolutePath().normalize();
+        fileSystem.provider().checkAccess(realPath);
+        return realPath;
     }
 
     /**
