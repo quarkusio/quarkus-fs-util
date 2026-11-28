@@ -278,6 +278,43 @@ class ReadOnlyZipFileSystemTest {
         }
     }
 
+    @Test
+    void listRelativeDirectoryReturnsRelativePaths() throws IOException {
+        // Like the JDK ZIP file system, each child is resolved against the
+        // directory, so the children of a relative directory are relative too
+        Path zip = createZip("test.zip",
+                entry("dir/alpha.txt", "a"),
+                entry("dir/sub/beta.txt", "b"),
+                entry("other.txt", "c"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            try (Stream<Path> stream = Files.list(fs.getPath("dir"))) {
+                List<String> paths = stream.map(Path::toString).sorted().collect(Collectors.toList());
+                assertEquals(List.of("dir/alpha.txt", "dir/sub"), paths);
+            }
+            try (Stream<Path> stream = Files.list(fs.getPath(""))) {
+                List<String> paths = stream.map(Path::toString).sorted().collect(Collectors.toList());
+                assertEquals(List.of("dir", "other.txt"), paths);
+            }
+        }
+    }
+
+    @Test
+    void walkRelativeDirectoryAndRelativizeChildren() throws IOException {
+        Path zip = createZip("test.zip",
+                entry("META-INF/MANIFEST.MF", "m"),
+                entry("META-INF/services/a.Service", "s"));
+
+        try (FileSystem fs = ReadOnlyZipFileSystem.open(zip)) {
+            Path dir = fs.getPath("META-INF");
+            try (Stream<Path> stream = Files.walk(dir)) {
+                List<String> paths = stream.map(p -> dir.relativize(p).toString()).sorted()
+                        .collect(Collectors.toList());
+                assertEquals(List.of("", "MANIFEST.MF", "services", "services/a.Service"), paths);
+            }
+        }
+    }
+
     // -- Existence and type checks --
 
     @Test
